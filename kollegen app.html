@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kollegen">
+<title>Tagesbewertung</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=SF+Pro+Display:wght@300;400&display=swap" rel="stylesheet">
+<style>
+/* ─── TOKENS ─────────────────────────────────────────────────────── */
+:root {
+  --bg:       #ffffff;
+  --bg2:      #f5f5f7;
+  --bg3:      #e8e8ed;
+  --border:   #d2d2d7;
+  --border2:  #c7c7cc;
+  --text:     #1d1d1f;
+  --text2:    #6e6e73;
+  --text3:    #aeaeb2;
+  --acc:      #ff6a00;
+  --acc2:     #ff8533;
+  --acc-bg:   rgba(255,106,0,0.08);
+  --acc-border:rgba(255,106,0,0.25);
+  --green:    #34c759;
+  --red:      #ff3b30;
+  --yellow:   #ff9f0a;
+  --shadow:   0 2px 16px rgba(0,0,0,0.06);
+  --shadow2:  0 1px 4px rgba(0,0,0,0.04);
+  --radius:   14px;
+  --radius-sm:8px;
+  --trans:    0.22s cubic-bezier(.4,0,.2,1);
+}
+[data-theme="dark"] {
+  --bg:       #000000;
+  --bg2:      #111111;
+  --bg3:      #1c1c1e;
+  --border:   #2c2c2e;
+  --border2:  #3a3a3c;
+  --text:     #f5f5f7;
+  --text2:    #98989d;
+  --text3:    #636366;
+  --acc:      #ff6a00;
+  --acc2:     #ff8533;
+  --acc-bg:   rgba(255,106,0,0.12);
+  --acc-border:rgba(255,106,0,0.3);
+  --green:    #30d158;
+  --red:      #ff453a;
+  --yellow:   #ffd60a;
+  --shadow:   0 2px 20px rgba(0,0,0,0.4);
+  --shadow2:  0 1px 6px rgba(0,0,0,0.3);
+}
+
+/* ─── RESET ──────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, 'Inter', BlinkMacSystemFont, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  min-height: 100vh;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--trans), color var(--trans);
+}
+
+/* ─── LAYOUT ─────────────────────────────────────────────────────── */
+.app { max-width: 430px; margin: 0 auto; min-height: 100vh; position: relative; }
+.content { padding: 20px 16px calc(90px + env(safe-area-inset-bottom)); }
+@keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+.view { animation: fadeUp .28s cubic-bezier(.4,0,.2,1); }
+
+/* ─── HEADER ─────────────────────────────────────────────────────── */
+.header {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 18px;
+  display: flex; align-items: center; gap: 10px;
+  min-height: 52px;
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+.header-title {
+  flex: 1;
+  font-size: 15px; font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.back-btn {
+  background: none; border: none;
+  color: var(--acc); font-size: 22px;
+  cursor: pointer; padding: 2px 10px 2px 0;
+  line-height: 1; font-weight: 300;
+}
+
+/* ALI LOGO */
+.ali-logo {
+  display: flex; align-items: baseline; gap: 0;
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.05em; text-transform: uppercase;
+  flex-shrink: 0; line-height: 1;
+}
+.ali-c { color: var(--text); }
+.ali-o { color: var(--text); }
+.ali-d { color: var(--text); }
+.ali-e { color: var(--text); }
+.ali-b { color: var(--text); }
+.ali-y { color: var(--text); }
+.ali-a { color: var(--acc); }
+.ali-l { color: var(--acc); opacity: 0.80; }
+.ali-i { color: var(--acc); opacity: 0.65; }
+
+/* mode toggle */
+.mode-btn {
+  background: var(--bg3);
+  border: 1.5px solid var(--border2);
+  border-radius: 999px;
+  width: 54px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; cursor: pointer;
+  transition: background var(--trans), border-color var(--trans);
+  flex-shrink: 0;
+  /* eye shape: pinched at both ends */
+  clip-path: polygon(8% 50%, 50% 0%, 92% 50%, 50% 100%);
+  border-radius: 0;
+  background: var(--acc-bg);
+  border: none;
+  outline: 2px solid var(--acc-border);
+  outline-offset: -2px;
+}
+.mode-btn:active { transform: scale(0.93); }
+
+/* ─── NAV ────────────────────────────────────────────────────────── */
+.nav {
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 100%; max-width: 430px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  display: flex; z-index: 20;
+  padding-bottom: env(safe-area-inset-bottom);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+.nav-btn {
+  flex: 1; background: none; border: none;
+  color: var(--text3);
+  padding: 10px 0 8px;
+  font-family: inherit; font-size: 9px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--trans);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.nav-btn.active { color: var(--acc); }
+.nav-icon { font-size: 20px; }
+
+/* ─── CARDS ──────────────────────────────────────────────────────── */
+.card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow2);
+  transition: background var(--trans), border-color var(--trans);
+}
+.card.pos { border-left: 3px solid var(--green); }
+.card.neg { border-left: 3px solid var(--red); }
+
+/* ─── KOLLEGE ROW ────────────────────────────────────────────────── */
+.kollege-row {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  display: flex; align-items: center; gap: 14px;
+  cursor: pointer;
+  box-shadow: var(--shadow2);
+  transition: all var(--trans);
+  -webkit-user-select: none; user-select: none;
+}
+.kollege-row:active { background: var(--bg3); transform: scale(0.99); }
+
+/* ─── HERO CARD ──────────────────────────────────────────────────── */
+.hero-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 30px 20px 24px;
+  text-align: center;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.hero-emoji { font-size: 56px; margin-bottom: 12px; cursor: pointer; display: block; }
+.hero-name { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; color: var(--text); margin-bottom: 4px; }
+.hero-pos { font-size: 13px; color: var(--text2); }
+.hero-avg { margin-top: 10px; font-size: 12px; color: var(--text3); }
+
+/* ─── BIG SCORE ──────────────────────────────────────────────────── */
+.big-score { font-size: 96px; font-weight: 300; line-height: 1; text-align: center; letter-spacing: -0.04em; }
+
+/* ─── STATS ──────────────────────────────────────────────────────── */
+.stat-row { display: flex; gap: 8px; margin-bottom: 16px; }
+.stat-box { flex: 1; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 6px; text-align: center; box-shadow: var(--shadow2); }
+.stat-val { font-size: 26px; font-weight: 300; line-height: 1; letter-spacing: -0.02em; }
+.stat-label { font-size: 9px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); margin-top: 4px; }
+
+/* ─── INPUTS ─────────────────────────────────────────────────────── */
+.input, .textarea {
+  width: 100%; background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  color: var(--text); font-size: 16px; font-family: inherit;
+  outline: none; -webkit-appearance: none; appearance: none;
+  transition: border-color var(--trans), background var(--trans);
+}
+.textarea { resize: none; height: 84px; }
+.input:focus, .textarea:focus { border-color: var(--acc); }
+.label { font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text2); display: block; margin-bottom: 7px; }
+.field { margin-bottom: 14px; }
+
+/* ─── SLIDER ─────────────────────────────────────────────────────── */
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: var(--border2); border-radius: 2px; outline: none; cursor: pointer; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 26px; border-radius: 50%; background: var(--acc); cursor: pointer; border: none; box-shadow: 0 2px 8px rgba(255,106,0,0.35); }
+
+/* ─── BUTTONS ────────────────────────────────────────────────────── */
+.btn {
+  border: none; border-radius: 12px;
+  padding: 13px 18px;
+  font-family: inherit; font-size: 14px; font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer; transition: opacity var(--trans), transform var(--trans);
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:active { opacity: 0.75; transform: scale(0.98); }
+.btn-primary { background: var(--acc); color: #fff; }
+.btn-secondary { background: var(--bg3); border: 1px solid var(--border2); color: var(--text2); }
+.btn-danger { background: rgba(255,59,48,0.08); border: 1px solid rgba(255,59,48,0.2); color: var(--red); }
+.btn-full { width: 100%; }
+.btn-row { display: flex; gap: 10px; }
+.btn-sm { font-size: 12px; padding: 8px 14px; border-radius: 8px; }
+
+/* ─── TAGS ───────────────────────────────────────────────────────── */
+.tag { display: inline-block; padding: 3px 9px; border-radius: 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+.tag.pos { background: rgba(52,199,89,0.1); color: var(--green); border: 1px solid rgba(52,199,89,0.25); }
+.tag.neg { background: rgba(255,59,48,0.1); color: var(--red); border: 1px solid rgba(255,59,48,0.2); }
+
+/* ─── SECTION ────────────────────────────────────────────────────── */
+.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; margin-top: 6px; }
+.section-title { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text3); }
+
+/* ─── EMPTY ──────────────────────────────────────────────────────── */
+.empty { text-align: center; padding: 56px 20px; color: var(--text3); font-size: 15px; line-height: 1.7; }
+.empty-icon { font-size: 44px; margin-bottom: 14px; }
+
+/* ─── TYPE TOGGLE ────────────────────────────────────────────────── */
+.type-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
+.type-btn { flex: 1; padding: 10px; border-radius: 10px; border: 1px solid var(--border2); background: none; color: var(--text3); font-family: inherit; font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; transition: all var(--trans); }
+.type-btn.pos.active { background: rgba(52,199,89,0.1); color: var(--green); border-color: rgba(52,199,89,0.4); }
+.type-btn.neg.active { background: rgba(255,59,48,0.08); color: var(--red); border-color: rgba(255,59,48,0.3); }
+
+/* ─── FILTER TABS ────────────────────────────────────────────────── */
+.filter-tabs { display: flex; gap: 8px; margin-bottom: 18px; }
+.filter-tab { flex: 1; padding: 9px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg2); color: var(--text3); font-family: inherit; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; transition: all var(--trans); }
+.filter-tab.active { border-color: var(--acc-border); color: var(--acc); background: var(--acc-bg); }
+
+/* ─── AVATAR PICKER ──────────────────────────────────────────────── */
+.avatar-picker { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+.avatar-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 10px; }
+.avatar-cell { font-size: 28px; text-align: center; padding: 8px 0; border-radius: 10px; cursor: pointer; border: 2px solid transparent; background: var(--bg2); transition: all 0.15s; }
+.avatar-cell:active { transform: scale(0.88); }
+.avatar-cell.selected { border-color: var(--acc); background: var(--acc-bg); }
+.avatar-section-label { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text3); margin-bottom: 8px; }
+.avatar-divider { border: none; border-top: 1px solid var(--border); margin: 10px 0; }
+
+/* ─── TOAST ──────────────────────────────────────────────────────── */
+.toast { position: fixed; bottom: 96px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 22px; border-radius: 20px; font-size: 13px; font-weight: 500; z-index: 100; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity 0.3s; box-shadow: var(--shadow); }
+.toast.show { opacity: 1; }
+
+/* ─── TUTORIAL ───────────────────────────────────────────────────── */
+.tut-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex; align-items: flex-end; justify-content: center;
+  padding-bottom: env(safe-area-inset-bottom);
+  animation: fadeUp .32s cubic-bezier(.4,0,.2,1);
+}
+.tut-sheet {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 24px 24px 0 0;
+  padding: 28px 24px 32px;
+  width: 100%; max-width: 430px;
+}
+.tut-pill {
+  width: 36px; height: 4px; border-radius: 2px;
+  background: var(--border2); margin: 0 auto 24px;
+}
+.tut-icon { font-size: 48px; text-align: center; margin-bottom: 14px; }
+.tut-title {
+  font-size: 22px; font-weight: 700; letter-spacing: -0.02em;
+  text-align: center; margin-bottom: 10px;
+}
+.tut-steps { margin-bottom: 24px; }
+.tut-step {
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.tut-step:last-child { border-bottom: none; }
+.tut-num {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--acc-bg); border: 1px solid var(--acc-border);
+  color: var(--acc); font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; margin-top: 1px;
+}
+.tut-step-text { font-size: 14px; line-height: 1.55; color: var(--text2); }
+.tut-step-text strong { color: var(--text); font-weight: 600; }
+.tut-btn {
+  width: 100%; padding: 15px;
+  background: var(--acc); color: #fff;
+  border: none; border-radius: 14px;
+  font-family: inherit; font-size: 16px; font-weight: 700;
+  letter-spacing: 0.02em; cursor: pointer;
+  transition: opacity .2s;
+}
+.tut-btn:active { opacity: 0.8; }
+
+/* ─── MISC ───────────────────────────────────────────────────────── */
+.meta { font-size: 12px; color: var(--text3); }
+hr.divider { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- HEADER -->
+  <div class="header">
+    <button class="back-btn" id="backBtn" style="display:none" onclick="goBack()">←</button>
+    <div class="header-title" id="headerTitle">Tagesbewertung</div>
+    <div style="flex:1"></div>
+    <button class="mode-btn" id="modeBtn" onclick="toggleMode()" title="Night Mode">🌙</button>
+    <div style="flex:1;display:flex;justify-content:flex-end">
+      <div class="ali-logo">
+        <span class="ali-c">c</span><span class="ali-o">o</span><span class="ali-d">d</span><span class="ali-e">e</span><span class="ali-b">b</span><span class="ali-y">y</span><span class="ali-a">a</span><span class="ali-l">l</span><span class="ali-i">i</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEWS -->
+  <div id="viewBewertung" class="content view"></div>
+  <div id="viewKollegen" class="content view" style="display:none"></div>
+  <div id="viewDetail" class="content view" style="display:none"></div>
+  <div id="viewFilter" class="content view" style="display:none"></div>
+
+  <!-- NAV -->
+  <nav class="nav">
+    <button class="nav-btn active" id="navBewertung" onclick="switchView('bewertung')">
+      <span class="nav-icon">⭐</span>Bewerten
+    </button>
+    <button class="nav-btn" id="navKollegen" onclick="switchView('kollegen')">
+      <span class="nav-icon">👤</span>Kollegen
+    </button>
+    <button class="nav-btn" id="navFilter" onclick="switchView('filter')">
+      <span class="nav-icon">⊞</span>Abfrage
+    </button>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+const AVATARE_BOESE = ['🧙‍♀️','🐉','👹','🧟','💀','🕷️','🦇','😈'];
+const AVATARE_GUT   = ['👸','🍼','🦋','🌸','🧚','🌈','🐣','🦄'];
+const STORAGE_KEY   = 'kollegen-app-v3';
+
+let data = { kollegen:[], bewertungen:[], ereignisse:[] };
+let currentView = 'bewertung';
+let selectedKollegeId = null;
+let tagesKollegeId = null;
+let bewertungPunkte = 5;
+let filterTyp = 'alle';
+let ereignisTyp = 'positiv';
+let addKollegeOpen = false;
+let addEreignisOpen = false;
+let isDark = false;
+
+/* ─── STORAGE ──────────────────────────────────────────────── */
+function load() {
+  try {
+    const r = localStorage.getItem(STORAGE_KEY);
+    if (r) { const d = JSON.parse(r); data = d.data || d; isDark = d.dark || false; }
+  } catch(e) {}
+}
+function save() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ data, dark: isDark })); } catch(e) {}
+}
+
+/* ─── HELPERS ──────────────────────────────────────────────── */
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+function fmt(iso) { return new Date(iso).toLocaleDateString('de-DE',{day:'2-digit',month:'short',year:'2-digit'}); }
+function ratingColor(v) { return v >= 8 ? 'var(--green)' : v >= 5 ? 'var(--yellow)' : 'var(--red)'; }
+function getAvg(id) {
+  const bs = data.bewertungen.filter(b => b.kollegeId===id);
+  return bs.length ? (bs.reduce((s,b)=>s+b.punkte,0)/bs.length).toFixed(1) : null;
+}
+function calcWeight(k) {
+  const bs = data.bewertungen.filter(b=>b.kollegeId===k.id);
+  return bs.length ? Math.max(1, 11 - bs.reduce((s,b)=>s+b.punkte,0)/bs.length) : 10;
+}
+function pickRandom() {
+  const ks = data.kollegen; if (!ks.length) return null;
+  const ws = ks.map(calcWeight), tot = ws.reduce((a,b)=>a+b,0);
+  let r = Math.random()*tot;
+  for (let i=0;i<ks.length;i++){r-=ws[i];if(r<=0)return ks[i].id;}
+  return ks[ks.length-1].id;
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+/* ─── NIGHT MODE ───────────────────────────────────────────── */
+function toggleMode() {
+  isDark = !isDark;
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  document.getElementById('modeBtn').textContent = isDark ? '☀️' : '🌙';
+  save();
+}
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  document.getElementById('modeBtn').textContent = isDark ? '☀️' : '🌙';
+}
+
+/* ─── AVATAR PICKER ────────────────────────────────────────── */
+function avatarPickerHTML(cur, ctx) {
+  const bg = AVATARE_BOESE.map(a=>`<div class="avatar-cell${a===cur?' selected':''}" onclick="${ctx}('${a}')">${a}</div>`).join('');
+  const gg = AVATARE_GUT.map(a=>`<div class="avatar-cell${a===cur?' selected':''}" onclick="${ctx}('${a}')">${a}</div>`).join('');
+  return `<div class="avatar-picker"><div class="avatar-section-label">😈 Böse Charaktere</div><div class="avatar-grid">${bg}</div><div class="avatar-divider"></div><div class="avatar-section-label">🌟 Gute Charaktere</div><div class="avatar-grid">${gg}</div></div>`;
+}
+function selectAvatarForNew(a) {
+  document.getElementById('selectedAvatarDisplay').textContent = a;
+  document.getElementById('selectedAvatarVal').value = a;
+  document.querySelectorAll('#avatarPickerNew .avatar-cell').forEach(el=>el.classList.toggle('selected',el.textContent===a));
+}
+function selectAvatarForDetail(a) {
+  const k = data.kollegen.find(k=>k.id===selectedKollegeId); if(!k) return;
+  k.avatar=a; save();
+  document.getElementById('heroAvatarDisplay').textContent=a;
+  document.querySelectorAll('#avatarPickerDetail .avatar-cell').forEach(el=>el.classList.toggle('selected',el.textContent===a));
+}
+
+/* ─── BEWERTUNG ────────────────────────────────────────────── */
+function renderBewertung() {
+  const el = document.getElementById('viewBewertung');
+  if (!data.kollegen.length) {
+    el.innerHTML=`<div class="empty"><div class="empty-icon">👤</div>Noch keine Kollegen angelegt.<br>Gehe zu <em>Kollegen</em> um anzufangen.</div>`;
+    return;
+  }
+  if (!tagesKollegeId) tagesKollegeId = pickRandom();
+  const k = data.kollegen.find(k=>k.id===tagesKollegeId);
+  if (!k) { tagesKollegeId=pickRandom(); return renderBewertung(); }
+  const avg = getAvg(k.id);
+  const col = ratingColor(bewertungPunkte);
+  const avatar = k.avatar||'👤';
+  el.innerHTML=`
+    <div class="hero-card">
+      <span class="hero-emoji">${avatar}</span>
+      <div class="hero-name">${esc(k.name)}</div>
+      ${k.position?`<div class="hero-pos">${esc(k.position)}</div>`:''}
+      ${avg?`<div class="hero-avg">Ø <span style="color:${ratingColor(parseFloat(avg))}">${avg}</span></div>`:''}
+    </div>
+    <div class="card">
+      <div style="text-align:center;margin-bottom:20px">
+        <div class="label">Heute bewerten</div>
+        <div class="big-score" id="bigScore" style="color:${col}">${bewertungPunkte}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;font-weight:500">von 10</div>
+      </div>
+      <input type="range" min="1" max="10" value="${bewertungPunkte}" id="scoreSlider" oninput="updateScore(this.value)">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:7px;margin-bottom:20px;font-weight:500">
+        <span>1 — schlecht</span><span>10 — sehr gut</span>
+      </div>
+      <div class="field">
+        <label class="label">Anmerkung</label>
+        <textarea class="textarea" id="anmerkungField" placeholder="Warum diese Bewertung?"></textarea>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" style="flex:1" onclick="neuerVorschlag()">Überspringen</button>
+      <button class="btn btn-primary" style="flex:2" onclick="bewertungAbgeben()">Speichern</button>
+    </div>`;
+}
+function updateScore(val) {
+  bewertungPunkte=parseInt(val);
+  document.getElementById('bigScore').textContent=bewertungPunkte;
+  document.getElementById('bigScore').style.color=ratingColor(bewertungPunkte);
+}
+function neuerVorschlag() {
+  const prev=tagesKollegeId;
+  if (data.kollegen.length>1){let n=prev,t=0;while(n===prev&&t<10){n=pickRandom();t++;}tagesKollegeId=n;}
+  else tagesKollegeId=pickRandom();
+  bewertungPunkte=5; renderBewertung();
+}
+function bewertungAbgeben() {
+  const k=data.kollegen.find(k=>k.id===tagesKollegeId); if(!k)return;
+  const anm=document.getElementById('anmerkungField').value.trim();
+  data.bewertungen.push({id:uid(),kollegeId:k.id,punkte:bewertungPunkte,anmerkung:anm,datum:new Date().toISOString()});
+  save(); showToast('Bewertung für '+k.name+' gespeichert'); neuerVorschlag();
+}
+
+/* ─── KOLLEGEN ─────────────────────────────────────────────── */
+function renderKollegen() {
+  const el = document.getElementById('viewKollegen');
+  const rows = data.kollegen.map(k => {
+    const avg=getAvg(k.id), bc=data.bewertungen.filter(b=>b.kollegeId===k.id).length;
+    const col=avg?ratingColor(parseFloat(avg)):'var(--text3)';
+    return `<div class="kollege-row" onclick="openDetail('${k.id}')">
+      <div style="font-size:34px;width:48px;text-align:center;flex-shrink:0">${k.avatar||'👤'}</div>
+      <div style="flex:1">
+        <div style="font-size:16px;font-weight:600;letter-spacing:-0.01em">${esc(k.name)}</div>
+        ${k.position?`<div class="meta" style="margin-top:2px">${esc(k.position)}</div>`:''}
+        <div class="meta" style="margin-top:2px">${bc} Bewertung${bc!==1?'en':''}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="color:${col};font-size:22px;font-weight:600">${avg||'–'}</div>
+        <div style="color:var(--text3);font-size:18px">›</div>
+      </div>
+    </div>`;
+  }).join('');
+  el.innerHTML=`
+    <div class="section-header">
+      <div class="section-title">${data.kollegen.length} Kollegen</div>
+      <button class="btn btn-primary btn-sm" onclick="toggleAddKollege()">+ Hinzufügen</button>
+    </div>
+    <div id="addKollegeForm" style="display:none">
+      <div class="card" style="margin-bottom:16px">
+        <div class="field">
+          <label class="label">Avatar <span id="selectedAvatarDisplay" style="font-size:22px;margin-left:6px">👤</span></label>
+          <input type="hidden" id="selectedAvatarVal" value="👤">
+          <div id="avatarPickerNew">${avatarPickerHTML('👤','selectAvatarForNew')}</div>
+        </div>
+        <div class="field"><label class="label">Name</label><input class="input" id="newName" placeholder="Max Mustermann" autocomplete="off"></div>
+        <div class="field"><label class="label">Position</label><input class="input" id="newPosition" placeholder="z. B. Teamleiter" autocomplete="off"></div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" style="flex:1" onclick="toggleAddKollege()">Abbrechen</button>
+          <button class="btn btn-primary" style="flex:2" onclick="kollegeHinzufuegen()">Speichern</button>
+        </div>
+      </div>
+    </div>
+    ${rows||'<div class="empty"><div class="empty-icon">👥</div>Noch keine Kollegen.<br>Füge deinen ersten Kollegen hinzu!</div>'}`;
+}
+function toggleAddKollege() {
+  addKollegeOpen=!addKollegeOpen;
+  document.getElementById('addKollegeForm').style.display=addKollegeOpen?'block':'none';
+  if(addKollegeOpen)document.getElementById('newName').focus();
+}
+function kollegeHinzufuegen() {
+  const name=document.getElementById('newName').value.trim();
+  if(!name){showToast('Bitte Name eingeben');return;}
+  const pos=document.getElementById('newPosition').value.trim();
+  const avatar=document.getElementById('selectedAvatarVal').value||'👤';
+  data.kollegen.push({id:uid(),name,position:pos,avatar});
+  save(); addKollegeOpen=false; showToast(name+' hinzugefügt'); renderKollegen();
+}
+
+/* ─── DETAIL ───────────────────────────────────────────────── */
+function openDetail(id){selectedKollegeId=id;switchView('detail');}
+function renderDetail() {
+  const el=document.getElementById('viewDetail');
+  const k=data.kollegen.find(k=>k.id===selectedKollegeId);
+  if(!k){switchView('kollegen');return;}
+  const kBew=data.bewertungen.filter(b=>b.kollegeId===k.id).sort((a,b)=>new Date(b.datum)-new Date(a.datum));
+  const kEre=data.ereignisse.filter(e=>e.kollegeId===k.id).sort((a,b)=>new Date(b.datum)-new Date(a.datum));
+  const avg=getAvg(k.id);
+  const posCnt=kEre.filter(e=>e.typ==='positiv').length;
+  const negCnt=kEre.filter(e=>e.typ==='negativ').length;
+  const avatar=k.avatar||'👤';
+
+  const erHTML=kEre.map(e=>`
+    <div class="card ${e.typ==='positiv'?'pos':'neg'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span class="tag ${e.typ==='positiv'?'pos':'neg'}">${e.typ}</span>
+        <span class="meta">${fmt(e.datum)}</span>
+      </div>
+      <div style="font-size:14px;line-height:1.65">${esc(e.text)}</div>
+    </div>`).join('');
+
+  const bwHTML=kBew.map(b=>`
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:28px;font-weight:600;letter-spacing:-0.02em;color:${ratingColor(b.punkte)}">${b.punkte}</div>
+        <span class="meta">${fmt(b.datum)}</span>
+      </div>
+      ${b.anmerkung?`<hr class="divider"><div style="font-size:13px;color:var(--text2);line-height:1.65">${esc(b.anmerkung)}</div>`:''}`+`</div>`).join('');
+
+  el.innerHTML=`
+    <div style="text-align:center;margin-bottom:20px">
+      <div id="heroAvatarDisplay" style="font-size:64px;cursor:pointer;display:block;margin-bottom:6px" onclick="toggleAvatarPickerDetail()">${avatar}</div>
+      <div style="font-size:10px;color:var(--text3);font-weight:500;letter-spacing:0.06em;margin-bottom:10px">TIPPEN ZUM ÄNDERN</div>
+      <div id="avatarPickerDetail" style="display:none;margin-bottom:14px">${avatarPickerHTML(avatar,'selectAvatarForDetail')}</div>
+      <div style="font-size:24px;font-weight:700;letter-spacing:-0.02em">${esc(k.name)}</div>
+      ${k.position?`<div class="meta" style="margin-top:4px">${esc(k.position)}</div>`:''}
+    </div>
+    <div class="stat-row">
+      <div class="stat-box"><div class="stat-val" style="color:${avg?ratingColor(parseFloat(avg)):'var(--text3)'}">${avg||'–'}</div><div class="stat-label">Ø Wert</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--acc)">${kBew.length}</div><div class="stat-label">Bewertet</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--green)">${posCnt}</div><div class="stat-label">Positiv</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--red)">${negCnt}</div><div class="stat-label">Negativ</div></div>
+    </div>
+    <div class="section-header">
+      <div class="section-title">Ereignisse</div>
+      <button class="btn btn-secondary btn-sm" onclick="toggleAddEreignis()">+ Ereignis</button>
+    </div>
+    <div id="addEreignisForm" style="display:none">
+      <div class="card" style="margin-bottom:12px">
+        <div class="type-toggle">
+          <button class="type-btn pos ${ereignisTyp==='positiv'?'active':''}" onclick="setEreignisTyp('positiv')">✦ Positiv</button>
+          <button class="type-btn neg ${ereignisTyp==='negativ'?'active':''}" onclick="setEreignisTyp('negativ')">◆ Negativ</button>
+        </div>
+        <div class="field"><label class="label">Was ist passiert?</label><textarea class="textarea" id="ereignisText" placeholder="Beschreibe das Ereignis..."></textarea></div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" style="flex:1" onclick="toggleAddEreignis()">Abbrechen</button>
+          <button class="btn btn-primary" style="flex:2" onclick="ereignisHinzufuegen()">Speichern</button>
+        </div>
+      </div>
+    </div>
+    ${erHTML||`<div class="card" style="text-align:center;padding:24px;color:var(--text3);font-size:13px">Noch keine Ereignisse</div>`}
+    ${kBew.length?`<div class="section-header" style="margin-top:6px"><div class="section-title">Bewertungshistorie</div></div>${bwHTML}`:''}
+    <button class="btn btn-danger btn-full" style="margin-top:14px" onclick="kollegeLoeschen('${k.id}')">Kollege löschen</button>`;
+}
+function toggleAvatarPickerDetail(){
+  const p=document.getElementById('avatarPickerDetail');
+  p.style.display=p.style.display==='none'?'block':'none';
+}
+function toggleAddEreignis(){
+  addEreignisOpen=!addEreignisOpen;
+  document.getElementById('addEreignisForm').style.display=addEreignisOpen?'block':'none';
+  if(addEreignisOpen)document.getElementById('ereignisText').focus();
+}
+function setEreignisTyp(typ){
+  ereignisTyp=typ;
+  document.querySelectorAll('.type-btn').forEach(b=>b.classList.toggle('active',b.classList.contains(typ==='positiv'?'pos':'neg')));
+}
+function ereignisHinzufuegen(){
+  const text=document.getElementById('ereignisText').value.trim();
+  if(!text){showToast('Bitte Text eingeben');return;}
+  data.ereignisse.push({id:uid(),kollegeId:selectedKollegeId,typ:ereignisTyp,text,datum:new Date().toISOString()});
+  save();showToast('Ereignis gespeichert');addEreignisOpen=false;renderDetail();
+}
+function kollegeLoeschen(id){
+  if(!confirm('Kollegen wirklich löschen?'))return;
+  data.kollegen=data.kollegen.filter(k=>k.id!==id);
+  data.bewertungen=data.bewertungen.filter(b=>b.kollegeId!==id);
+  data.ereignisse=data.ereignisse.filter(e=>e.kollegeId!==id);
+  save();showToast('Kollege gelöscht');switchView('kollegen');
+}
+
+/* ─── FILTER ───────────────────────────────────────────────── */
+function renderFilter(){
+  const el=document.getElementById('viewFilter');
+  const posCnt=data.ereignisse.filter(e=>e.typ==='positiv').length;
+  const negCnt=data.ereignisse.filter(e=>e.typ==='negativ').length;
+  const filtered=data.ereignisse.filter(e=>filterTyp==='alle'||e.typ===filterTyp).sort((a,b)=>new Date(b.datum)-new Date(a.datum));
+  const rows=filtered.map(e=>{
+    const k=data.kollegen.find(k=>k.id===e.kollegeId);
+    return `<div class="card ${e.typ==='positiv'?'pos':'neg'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:18px">${k?.avatar||'👤'}</span>
+          <span class="tag ${e.typ==='positiv'?'pos':'neg'}">${e.typ}</span>
+          <span style="font-size:13px;font-weight:600;color:var(--acc)">${k?esc(k.name):'?'}</span>
+        </div>
+        <span class="meta">${fmt(e.datum)}</span>
+      </div>
+      <div style="font-size:14px;line-height:1.65">${esc(e.text)}</div>
+    </div>`;
+  }).join('');
+  el.innerHTML=`
+    <div class="stat-row">
+      <div class="stat-box" style="border-color:rgba(52,199,89,0.3)"><div class="stat-val" style="color:var(--green)">${posCnt}</div><div class="stat-label">Positiv</div></div>
+      <div class="stat-box" style="border-color:rgba(255,59,48,0.25)"><div class="stat-val" style="color:var(--red)">${negCnt}</div><div class="stat-label">Negativ</div></div>
+      <div class="stat-box"><div class="stat-val" style="color:var(--acc)">${data.ereignisse.length}</div><div class="stat-label">Gesamt</div></div>
+    </div>
+    <div class="filter-tabs">
+      <button class="filter-tab ${filterTyp==='alle'?'active':''}" onclick="setFilter('alle')">Alle</button>
+      <button class="filter-tab ${filterTyp==='positiv'?'active':''}" onclick="setFilter('positiv')">✦ Positiv</button>
+      <button class="filter-tab ${filterTyp==='negativ'?'active':''}" onclick="setFilter('negativ')">◆ Negativ</button>
+    </div>
+    ${rows||`<div class="empty"><div class="empty-icon">⊞</div>Keine Ereignisse gefunden</div>`}`;
+}
+function setFilter(typ){filterTyp=typ;renderFilter();}
+
+/* ─── NAVIGATION ───────────────────────────────────────────── */
+function switchView(view){
+  ['bewertung','kollegen','detail','filter'].forEach(v=>{
+    document.getElementById('view'+v.charAt(0).toUpperCase()+v.slice(1)).style.display=v===view?'block':'none';
+  });
+  const nMap={bewertung:'navBewertung',kollegen:'navKollegen',filter:'navFilter',detail:'navKollegen'};
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  if(nMap[view])document.getElementById(nMap[view]).classList.add('active');
+  const titles={bewertung:'Tagesbewertung',kollegen:'Kollegen',filter:'Abfrage'};
+  document.getElementById('backBtn').style.display=view==='detail'?'block':'none';
+  document.getElementById('headerTitle').textContent=view==='detail'?(data.kollegen.find(k=>k.id===selectedKollegeId)?.name||'Details'):titles[view];
+  currentView=view; addKollegeOpen=false; addEreignisOpen=false;
+  if(view==='bewertung')renderBewertung();
+  else if(view==='kollegen')renderKollegen();
+  else if(view==='detail')renderDetail();
+  else if(view==='filter')renderFilter();
+  window.scrollTo(0,0);
+}
+function goBack(){switchView('kollegen');}
+
+/* ─── TUTORIAL ─────────────────────────────────────────────── */
+function showTutorial() {
+  if (localStorage.getItem('kollegen-tut-seen')) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'tut-overlay';
+  overlay.id = 'tutOverlay';
+  overlay.innerHTML = `
+    <div class="tut-sheet">
+      <div class="tut-pill"></div>
+      <div class="tut-icon">👋</div>
+      <div class="tut-title">Willkommen!</div>
+      <div class="tut-steps">
+        <div class="tut-step">
+          <div class="tut-num">1</div>
+          <div class="tut-step-text">Tippe unten auf <strong>👤 Kollegen</strong> und füge deinen ersten Kollegen über <strong>+ Hinzufügen</strong> hinzu.</div>
+        </div>
+        <div class="tut-step">
+          <div class="tut-num">2</div>
+          <div class="tut-step-text">Wähle einen <strong>Avatar</strong> — böse Charaktere für schwierige Kollegen, gute für die netten.</div>
+        </div>
+        <div class="tut-step">
+          <div class="tut-num">3</div>
+          <div class="tut-step-text">Kehre zu <strong>⭐ Bewerten</strong> zurück und vergib täglich Punkte von 1–10.</div>
+        </div>
+        <div class="tut-step">
+          <div class="tut-num">4</div>
+          <div class="tut-step-text">Unter <strong>⊞ Abfrage</strong> siehst du alle positiven und negativen Ereignisse im Überblick.</div>
+        </div>
+      </div>
+      <button class="tut-btn" onclick="closeTutorial()">TMM</button>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+function closeTutorial() {
+  localStorage.setItem('kollegen-tut-seen','1');
+  const o = document.getElementById('tutOverlay');
+  if (o) o.remove();
+}
+
+/* ─── INIT ─────────────────────────────────────────────────── */
+load();
+applyTheme();
+switchView('bewertung');
+showTutorial();
+</script>
+</body>
+</html>
