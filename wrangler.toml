@@ -1,0 +1,18 @@
+name = "kollegapp"
+type = "javascript"
+compatibility_date = "2026-01-01"
+
+[env.production]
+routes = [{ pattern = "*", zone_name = "example.com" }]
+
+[[env.production.build.upload_rules]]
+globs = ["**/*.html", "**/*.css", "**/*.js"]
+fallthrough = true
+
+[build]
+command = ""
+cwd = "."
+watch_paths = []
+
+[env.production.build]
+command = ""
