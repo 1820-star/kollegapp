@@ -1,372 +1,277 @@
 import { useState, useEffect } from 'react';
 
-const AVATARE_BOESE = ['🧙‍♀️','🐉','👹','🧟','💀','🕷️','🦇','😈'];
-const AVATARE_GUT   = ['👸','🍼','🦋','🌸','🧚','🌈','🐣','🦄'];
-const STORAGE_KEY   = 'kollegen-app-v3';
+function toMin(t) {
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+function toTime(min) {
+  if (min === null) return '--:--';
+  const t = ((min % 1440) + 1440) % 1440;
+  return String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0');
+}
+
+function eur(n) {
+  return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+}
 
 export default function App() {
-  const [data, setData] = useState({ kollegen:[], bewertungen:[], ereignisse:[] });
-  const [currentView, setCurrentView] = useState('bewertung');
-  const [selectedKollegeId, setSelectedKollegeId] = useState(null);
-  const [tagesKollegeId, setTagesKollegeId] = useState(null);
-  const [bewertungPunkte, setBewertungPunkte] = useState(5);
-  const [filterTyp, setFilterTyp] = useState('alle');
-  const [ereignisTyp, setEreignisTyp] = useState('positiv');
-  const [addKollegeOpen, setAddKollegeOpen] = useState(false);
-  const [addEreignisOpen, setAddEreignisOpen] = useState(false);
-  const [isDark, setIsDark] = useState(false);
+  const [zugpreis, setZugpreis] = useState('');
+  const [beginn, setBeginn] = useState('');
+  const [ende, setEnde] = useState('');
+  const [dauerHours, setDauerHours] = useState('');
+  const [dauerMinutes, setDauerMinutes] = useState('');
 
-  // STORAGE
-  useEffect(() => {
-    try {
-      const r = localStorage.getItem(STORAGE_KEY);
-      if (r) {
-        const d = JSON.parse(r);
-        const base = d.data || d || {};
-        base.kollegen = Array.isArray(base.kollegen) ? base.kollegen : [];
-        base.bewertungen = Array.isArray(base.bewertungen) ? base.bewertungen : [];
-        base.ereignisse = Array.isArray(base.ereignisse) ? base.ereignisse : [];
-        setData(base);
-        setIsDark(!!d.dark);
-      }
-    } catch(e) {
-      // ignore
-    }
-  }, []);
+  const [origin, setOrigin] = useState('');
+  const [destination, setDestination] = useState('');
+
+  const [times, setTimes] = useState(['--:--','--:--','--:--','--:--','--:--','--:--']);
+  const [costs, setCosts] = useState({bahn:0, frueh:0, mittag:0, abend:0, gesamt:0});
+  const [show, setShow] = useState(false);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ data, dark: isDark }));
-    } catch(e) {}
-  }, [data, isDark]);
+    calc();
+  }, [zugpreis, beginn, ende, dauerHours, dauerMinutes]);
 
-  // helpers
-  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
-  function fmt(iso) { return new Date(iso).toLocaleDateString('de-DE',{day:'2-digit',month:'short',year:'2-digit'}); }
-  function ratingColor(v) { return v >= 8 ? 'var(--green)' : v >= 5 ? 'var(--yellow)' : 'var(--red)'; }
-  function getAvg(id) {
-    const bs = data.bewertungen.filter(b => b.kollegeId===id);
-    return bs.length ? (bs.reduce((s,b)=>s+b.punkte,0)/bs.length).toFixed(1) : null;
-  }
-  function calcWeight(k) {
-    const bs = data.bewertungen.filter(b=>b.kollegeId===k.id);
-    return bs.length ? Math.max(1, 11 - bs.reduce((s,b)=>s+b.punkte,0)/bs.length) : 10;
-  }
-  function pickRandom() {
-    const ks = data.kollegen;
-    if (!ks.length) return null;
-    const ws = ks.map(calcWeight), tot = ws.reduce((a,b)=>a+b,0);
-    let r = Math.random()*tot;
-    for (let i=0;i<ks.length;i++){r-=ws[i];if(r<=0)return ks[i].id;}
-    return ks[ks.length-1].id;
-  }
+  function calc() {
+    const preis = parseFloat(zugpreis);
+    const b = toMin(beginn);
+    const e = toMin(ende);
+    const d = (dauerHours !== '' && dauerMinutes !== '') 
+      ? parseInt(dauerHours) * 60 + parseInt(dauerMinutes)
+      : null;
 
-  function showToast(msg) {
-    const t = document.getElementById('toast');
-    if (t) {
-      t.textContent = msg;
-      t.classList.add('show');
-      setTimeout(()=>t.classList.remove('show'), 2200);
+    if (isNaN(preis) || b === null || e === null || d === null) {
+      setShow(false);
+      return;
     }
+
+    const abfahrtMin = b - 30 - d;
+    const ankunftMin = b - 30;
+    const abfahrtTermMin = e + 30;
+    const zuhauseMin = e + 30 + d;
+
+    setTimes([
+      toTime(abfahrtMin),
+      toTime(ankunftMin),
+      toTime(b),
+      toTime(e),
+      toTime(abfahrtTermMin),
+      toTime(zuhauseMin)
+    ]);
+
+    const bahn = preis * 2;
+    const frueh = abfahrtMin < 7 * 60 ? 5.80 : 0;
+    const mittag = abfahrtMin < 11 * 60 && zuhauseMin > 14 * 60 ? 12.30 : 0;
+    const abend = zuhauseMin > 19 * 60 ? 12.30 : 0;
+    const gesamt = bahn + frueh + mittag + abend;
+
+    setCosts({bahn, frueh, mittag, abend, gesamt});
+    setShow(true);
   }
-
-  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-
-  function toggleMode() {
-    setIsDark(!isDark);
-  }
-  useEffect(()=>{
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-  },[isDark]);
-
-  // Bewertung view actions
-  useEffect(() => {
-    if (!tagesKollegeId && data.kollegen.length) {
-      setTagesKollegeId(pickRandom());
-    }
-  }, [data.kollegen]);
-
-  function updateScore(val) {
-    setBewertungPunkte(parseInt(val));
-  }
-  function neuerVorschlag() {
-    const prev = tagesKollegeId;
-    if (data.kollegen.length > 1) {
-      let n = prev, t = 0;
-      while (n === prev && t < 10) { n = pickRandom(); t++; }
-      setTagesKollegeId(n);
-    } else {
-      setTagesKollegeId(pickRandom());
-    }
-    setBewertungPunkte(5);
-  }
-  function bewertungAbgeben() {
-    const k = data.kollegen.find(k=>k.id===tagesKollegeId);
-    if (!k) return;
-    const anmEl = document.getElementById('anmerkungField');
-    const anm = anmEl ? anmEl.value.trim() : '';
-    const newData = {...data};
-    newData.bewertungen = [...newData.bewertungen, {id:uid(),kollegeId:k.id,punkte:bewertungPunkte,anmerkung:anm,datum:new Date().toISOString()}];
-    setData(newData);
-    showToast('Bewertung für '+k.name+' gespeichert');
-    neuerVorschlag();
-  }
-
-  // Kollegen view
-  function toggleAddKollege() { setAddKollegeOpen(!addKollegeOpen); }
-  function kollegeHinzufuegen() {
-    const nameEl = document.getElementById('newName');
-    if (!nameEl) return;
-    const name = nameEl.value.trim();
-    if (!name) { showToast('Bitte Name eingeben'); return; }
-    const posEl = document.getElementById('newPosition');
-    const pos = posEl ? posEl.value.trim() : '';
-    const avatarEl = document.getElementById('newAvatar');
-    const avatar = avatarEl ? avatarEl.value || '👤' : '👤';
-    const newData = {...data};
-    newData.kollegen = [...newData.kollegen, {id:uid(),name,position:pos,avatar}];
-    setData(newData);
-    setAddKollegeOpen(false);
-    showToast(name+' hinzugefügt');
-  }
-
-  function openDetail(id) { setSelectedKollegeId(id); setCurrentView('detail'); }
-  function kollegeLoeschen(id) {
-    if (!window.confirm('Kollegen wirklich löschen?')) return;
-    const newData = {
-      kollegen: data.kollegen.filter(k=>k.id!==id),
-      bewertungen: data.bewertungen.filter(b=>b.kollegeId!==id),
-      ereignisse: data.ereignisse.filter(e=>e.kollegeId!==id),
-    };
-    setData(newData);
-    showToast('Kollege gelöscht');
-    setCurrentView('kollegen');
-  }
-
-  function addEreignis() {
-    const textEl = document.getElementById('ereignisText');
-    if (!textEl) return;
-    const text = textEl.value.trim();
-    if (!text) { showToast('Bitte Text eingeben'); return; }
-    const newData = {...data};
-    newData.ereignisse = [...newData.ereignisse, {id:uid(),kollegeId:selectedKollegeId,typ:ereignisTyp,text,datum:new Date().toISOString()}];
-    setData(newData);
-    showToast('Ereignis gespeichert');
-    setAddEreignisOpen(false);
-  }
-
-  // filter view
-  function setFilter(t) { setFilterTyp(t); }
-
-  // rendering helpers
-  const kollege = data.kollegen.find(k=>k.id===tagesKollegeId);
-  const avg = kollege ? getAvg(kollege.id) : null;
 
   return (
-    <div className="app">
-      <div className="header">
-        {currentView !== 'bewertung' && <button className="back-btn" onClick={()=>setCurrentView('bewertung')}>←</button>}
-        <div className="header-title">Tagesbewertung</div>
-        <div style={{flex:1}} />
-        <button className="mode-btn" onClick={toggleMode} title="Night Mode">{isDark ? '☀️' : '🌙'}</button>
-        <div style={{flex:1,display:'flex',justifyContent:'flex-end'}}>
-          <div className="ali-logo">
-            <span className="ali-c">c</span><span className="ali-o">o</span><span className="ali-d">d</span><span className="ali-e">e</span><span className="ali-b">b</span><span className="ali-y">y</span><span className="ali-a">a</span><span className="ali-l">l</span><span className="ali-i">i</span>
+    <div className="wrap">
+      <header>
+        <div className="header-icon">🧳</div>
+        <div>
+          <h1>Reisekostenrechner</h1>
+          <p className="subtitle">Automatische Berechnung · Zeitplan · Verpflegungspauschalen</p>
+        </div>
+      </header>
+
+      <div className="grid">
+        <div className="card" style={{animationDelay:'0s'}}>
+          <div className="card-tag">01 — Eingaben</div>
+          <h2 className="card-title">Reisedaten</h2>
+          <p className="card-desc">Nur diese 4 Felder ausfüllen — alles andere wird berechnet.</p>
+
+          <div className="inputs">
+            <div className="field">
+              <label>Abfahrtsadresse</label>
+              <input
+                type="text"
+                id="origin"
+                placeholder="Straße, Stadt"
+                value={origin}
+                onChange={e => setOrigin(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label>Zieladresse</label>
+              <input
+                type="text"
+                id="destination"
+                placeholder="Straße, Stadt"
+                value={destination}
+                onChange={e => setDestination(e.target.value)}
+              />
+            </div>
+            <div className="btn-row">
+              <button className="btn btn-secondary" onClick={() => {
+                  if(origin && destination) {
+                    const o = encodeURIComponent(origin);
+                    const d = encodeURIComponent(destination);
+                    const url = `https://www.google.com/maps/dir/?api=1&origin=${o}&destination=${d}&travelmode=transit`;
+                    window.open(url, '_blank');
+                  } else {
+                    alert('Bitte Start- und Zieladresse eingeben');
+                  }
+                }}
+              >Route suchen</button>
+            </div>
+            <div className="field">
+              <label>Zugpreis einfache Strecke</label>
+              <input
+                type="number"
+                id="zugpreis"
+                placeholder="45.00"
+                min="0"
+                step="0.01"
+                value={zugpreis}
+                onChange={e => setZugpreis(e.target.value)}
+              />
+              <span className="hint">Preis in € für eine Fahrtrichtung</span>
+            </div>
+            <div className="field">
+              <label>Terminbeginn</label>
+              <input
+                type="time"
+                id="beginn"
+                value={beginn}
+                onChange={e => setBeginn(e.target.value)}
+              />
+              <span className="hint">Startzeit des Termins</span>
+            </div>
+            <div className="field">
+              <label>Terminende</label>
+              <input
+                type="time"
+                id="ende"
+                value={ende}
+                onChange={e => setEnde(e.target.value)}
+              />
+              <span className="hint">Endzeit des Termins</span>
+            </div>
+            <div className="field">
+              <label>Reisedauer einfache Strecke</label>
+              <div style={{display:'flex', gap:'10px', alignItems:'center'}}>
+                <div style={{flex:1}}>
+                  <input
+                    type="number"
+                    id="dauerHours"
+                    placeholder="0"
+                    min="0"
+                    max="23"
+                    value={dauerHours}
+                    onChange={e => setDauerHours(e.target.value)}
+                  />
+                  <span className="hint" style={{fontSize:'0.8em'}}>Stunden</span>
+                </div>
+                <div style={{flex:1}}>
+                  <input
+                    type="number"
+                    id="dauerMinutes"
+                    placeholder="30"
+                    min="0"
+                    max="59"
+                    value={dauerMinutes}
+                    onChange={e => setDauerMinutes(e.target.value)}
+                  />
+                  <span className="hint" style={{fontSize:'0.8em'}}>Minuten</span>
+                </div>
+              </div>
+              <span className="hint">z.B. 1 Stunde und 30 Minuten</span>
+            </div>
+          </div>
+
+          <div className="rules">
+            <p className="rules-title">Pauschalen-Regeln</p>
+            <div className="rule">
+              <span className="rule-icon">🌅</span>
+              <span>Frühstück <strong>5,80 €</strong> — wenn Abfahrt vor <strong>07:00 Uhr</strong></span>
+            </div>
+            <div className="rule">
+              <span className="rule-icon">☀️</span>
+              <span>Mittagessen <strong>12,30 €</strong> — Abfahrt vor <strong>11:00</strong> und Rückkehr nach <strong>14:00</strong></span>
+            </div>
+            <div className="rule">
+              <span className="rule-icon">🌙</span>
+              <span>Abendessen <strong>12,30 €</strong> — wenn Rückkehr nach <strong>19:00 Uhr</strong></span>
+            </div>
+          </div>
+        </div>
+
+        <div className="right-col">
+          <div className={`card result-card${show ? ' has-result' : ''}`} style={{animationDelay:'0.1s'}}>
+            <div className="card-tag">02 — Zeitplan</div>
+            <h2 className="card-title">Reisezeitplan</h2>
+            {!show && <div className="empty">← Felder ausfüllen für Zeitplan</div>}
+            {show && (
+              <div className="timeline" style={{display:'flex'}}>
+                {[
+                  {label:'🏠 Abfahrt von Zuhause', active:false},
+                  {label:'📍 Ankunft beim Termin', active:false},
+                  {label:'▶ Terminbeginn', active:true},
+                  {label:'⏹ Terminende', active:true},
+                  {label:'🚆 Abfahrt vom Termin', active:false},
+                  {label:'🏠 Ankunft Zuhause', active:false},
+                ].map((item,i)=>(
+                  <div className="tl-item" key={i}>
+                    <div className="tl-left">
+                      <div className={`tl-dot${item.active ? ' active' : ''}`}></div>
+                      {i < 5 && <div className="tl-line"></div>}
+                    </div>
+                    <div className={`tl-content${item.active ? ' active' : ''}`}>
+                      <span className="tl-label">{item.label}</span>
+                      <span className={`tl-time${item.active ? ' active' : ''}`}>{times[i]}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className={`card result-card${show ? ' has-result' : ''}`} style={{animationDelay:'0.18s'}}>
+            <div className="card-tag">03 — Kosten</div>
+            <h2 className="card-title">Kostenübersicht</h2>
+            {!show && <div className="empty">← Felder ausfüllen für Kostenberechnung</div>}
+            {show && (
+              <div id="costs">
+                <div className={`cost-row${!show ? ' inactive' : ''}`} id="row-bahn">
+                  <span className="cost-icon">🚆</span>
+                  <span className="cost-label">Hin- und Rückreise</span>
+                  <span className="cost-amount" id="val-bahn">{eur(costs.bahn)}</span>
+                </div>
+                <div className={`cost-row${costs.frueh === 0 ? ' inactive' : ''}`} id="row-frueh">
+                  <span className="cost-icon">🌅</span>
+                  <span className="cost-label">Frühstückspauschale</span>
+                  <span className="cost-amount" id="val-frueh">{costs.frueh > 0 ? eur(costs.frueh) : '–'}</span>
+                </div>
+                <div className={`cost-row${costs.mittag === 0 ? ' inactive' : ''}`} id="row-mittag">
+                  <span className="cost-icon">☀️</span>
+                  <span className="cost-label">Mittagspauschale</span>
+                  <span className="cost-amount" id="val-mittag">{costs.mittag > 0 ? eur(costs.mittag) : '–'}</span>
+                </div>
+                <div className={`cost-row${costs.abend === 0 ? ' inactive' : ''}`} id="row-abend">
+                  <span className="cost-icon">🌙</span>
+                  <span className="cost-label">Abendessenpauschale</span>
+                  <span className="cost-amount" id="val-abend">{costs.abend > 0 ? eur(costs.abend) : '–'}</span>
+                </div>
+                <div className="cost-row total">
+                  <span className="cost-icon">∑</span>
+                  <span className="cost-label">Gesamtsumme</span>
+                  <span className="cost-amount" id="val-gesamt">{eur(costs.gesamt)}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* views */}
-      {currentView === 'bewertung' && (
-        <div className="content view">
-          {data.kollegen.length === 0 ? (
-            <div className="empty">
-              <div className="empty-icon">👤</div>Noch keine Kollegen angelegt.<br />Gehe zu <em>Kollegen</em> um anzufangen.
-            </div>
-          ) : (
-            <>
-              {kollege && (
-                <div className="hero-card">
-                  <span className="hero-emoji">{kollege.avatar||'👤'}</span>
-                  <div className="hero-name">{kollege.name}</div>
-                  {kollege.position && <div className="hero-pos">{kollege.position}</div>}
-                  {avg && <div className="hero-avg">Ø <span style={{color: ratingColor(parseFloat(avg))}}>{avg}</span></div>}
-                </div>
-              )}
-              <div className="card">
-                <div style={{textAlign:'center',marginBottom:20}}>
-                  <div className="label">Heute bewerten</div>
-                  <div className="big-score" id="bigScore" style={{color:ratingColor(bewertungPunkte)}}>{bewertungPunkte}</div>
-                  <div style={{fontSize:11,color:'var(--text3)',marginTop:2,fontWeight:500}}>von 10</div>
-                </div>
-                <input type="range" min="1" max="10" value={bewertungPunkte} onChange={e=>updateScore(e.target.value)} />
-                <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'var(--text3)',marginTop:7,marginBottom:20,fontWeight:500}}>
-                  <span>1 — schlecht</span><span>10 — sehr gut</span>
-                </div>
-                <div className="field">
-                  <label className="label">Anmerkung</label>
-                  <textarea className="textarea" id="anmerkungField" placeholder="Warum diese Bewertung?" />
-                </div>
-              </div>
-              <div className="btn-row">
-                <button className="btn btn-secondary" style={{flex:1}} onClick={neuerVorschlag}>Überspringen</button>
-                <button className="btn btn-primary" style={{flex:2}} onClick={bewertungAbgeben}>Speichern</button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {currentView === 'kollegen' && (
-        <div className="content view">
-          <div className="section-header">
-            <div className="section-title">{data.kollegen.length} Kollegen</div>
-            <button className="btn btn-primary btn-sm" onClick={toggleAddKollege}>+ Hinzufügen</button>
-          </div>
-          {addKollegeOpen && (
-            <div id="addKollegeForm" style={{display:'block'}}>
-              <div className="card" style={{marginBottom:16}}>
-                <div className="field">
-                  <label className="label">Avatar</label>
-                  <input className="input" id="newAvatar" placeholder="👤" defaultValue="👤" />
-                </div>
-                <div className="field"><label className="label">Name</label><input className="input" id="newName" placeholder="Max Mustermann" autoComplete="off"/></div>
-                <div className="field"><label className="label">Position</label><input className="input" id="newPosition" placeholder="z. B. Teamleiter" autoComplete="off"/></div>
-                <div className="btn-row">
-                  <button className="btn btn-secondary" style={{flex:1}} onClick={toggleAddKollege}>Abbrechen</button>
-                  <button className="btn btn-primary" style={{flex:2}} onClick={kollegeHinzufuegen}>Speichern</button>
-                </div>
-              </div>
-            </div>
-          )}
-          {data.kollegen.length===0 ? (
-            <div className="empty"><div className="empty-icon">👥</div>Noch keine Kollegen.<br/>Füge deinen ersten Kollegen hinzu!</div>
-          ) : (
-            data.kollegen.map(k => {
-              const avgk = getAvg(k.id);
-              const bc = data.bewertungen.filter(b=>b.kollegeId===k.id).length;
-              const col = avgk?ratingColor(parseFloat(avgk)):'var(--text3)';
-              return (
-                <div key={k.id} className="kollege-row" onClick={()=>openDetail(k.id)}>
-                  <div style={{fontSize:34,width:48,textAlign:'center',flexShrink:0}}>{k.avatar||'👤'}</div>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:16,fontWeight:600,letterSpacing:'-0.01em'}}>{esc(k.name)}</div>
-                    {k.position && <div className="meta" style={{marginTop:2}}>{esc(k.position)}</div>}
-                    <div className="meta" style={{marginTop:2}}>{bc} Bewertung{bc!==1?'en':''}</div>
-                  </div>
-                  <div style={{display:'flex',alignItems:'center',gap:8}}>
-                    <div style={{color:col,fontSize:22,fontWeight:600}}>{avgk||'–'}</div>
-                    <div style={{color:'var(--text3)',fontSize:18}}>›</div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
-
-      {currentView === 'detail' && detailKollege && (
-        <div className="content view">
-          <div style={{textAlign:'center',marginBottom:20}}>
-            <div id="heroAvatarDisplay" style={{fontSize:64,cursor:'pointer',display:'block',marginBottom:6}}>{detailKollege.avatar||'👤'}</div>
-            <div style={{fontSize:10,color:'var(--text3)',fontWeight:500,letterSpacing:0.06,marginBottom:10}}>TIPPEN ZUM ÄNDERN</div>
-            <div style={{fontSize:24,fontWeight:700,letterSpacing:-0.02}}>{esc(detailKollege.name)}</div>
-            {detailKollege.position && <div className="meta" style={{marginTop:4}}>{esc(detailKollege.position)}</div>}
-          </div>
-          <div className="stat-row">
-            <div className="stat-box"><div className="stat-val" style={{color:detailAvg?ratingColor(parseFloat(detailAvg)):'var(--text3)'}}>{detailAvg||'–'}</div><div className="stat-label">Ø Wert</div></div>
-            <div className="stat-box"><div className="stat-val" style={{color:'var(--acc)'}}>{detailBew.length}</div><div className="stat-label">Bewertet</div></div>
-            <div className="stat-box"><div className="stat-val" style={{color:'var(--green)'}}>{posCnt}</div><div className="stat-label">Positiv</div></div>
-            <div className="stat-box"><div className="stat-val" style={{color:'var(--red)'}}>{negCnt}</div><div className="stat-label">Negativ</div></div>
-          </div>
-          <div className="section-header">
-            <div className="section-title">Ereignisse</div>
-            <button className="btn btn-secondary btn-sm" onClick={()=>setAddEreignisOpen(!addEreignisOpen)}>+ Ereignis</button>
-          </div>
-          {addEreignisOpen && (
-            <div id="addEreignisForm" style={{display:'block'}}>
-              <div className="card" style={{marginBottom:12}}>
-                <div className="type-toggle">
-                  <button className={`type-btn pos ${ereignisTyp==='positiv'?'active':''}`} onClick={()=>setEreignisTyp('positiv')}>✦ Positiv</button>
-                  <button className={`type-btn neg ${ereignisTyp==='negativ'?'active':''}`} onClick={()=>setEreignisTyp('negativ')}>◆ Negativ</button>
-                </div>
-                <div className="field"><label className="label">Was ist passiert?</label><textarea className="textarea" id="ereignisText" placeholder="Beschreibe das Ereignis..." /></div>
-                <div className="btn-row">
-                  <button className="btn btn-secondary" style={{flex:1}} onClick={()=>setAddEreignisOpen(false)}>Abbrechen</button>
-                  <button className="btn btn-primary" style={{flex:2}} onClick={addEreignis}>Speichern</button>
-                </div>
-              </div>
-            </div>
-          )}
-          {detailEre.length ? detailEre.map(e=>(
-            <div key={e.id} className={`card ${e.typ==='positiv'?'pos':'neg'}`}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                <span className={`tag ${e.typ==='positiv'?'pos':'neg'}`}>{e.typ}</span>
-                <span className="meta">{fmt(e.datum)}</span>
-              </div>
-              <div style={{fontSize:14,lineHeight:1.65}}>{esc(e.text)}</div>
-            </div>
-          )) : <div className="card" style={{textAlign:'center',padding:24,color:'var(--text3)',fontSize:13}}>Noch keine Ereignisse</div>}
-          {detailBew.length ? <>
-            <div className="section-header" style={{marginTop:6}}><div className="section-title">Bewertungshistorie</div></div>
-            {detailBew.map(b=>(
-              <div key={b.id} className="card">
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <div style={{fontSize:28,fontWeight:600,letterSpacing:-0.02,color:ratingColor(b.punkte)}}>{b.punkte}</div>
-                  <span className="meta">{fmt(b.datum)}</span>
-                </div>
-                {b.anmerkung && <><hr className="divider"/><div style={{fontSize:13,color:'var(--text2)',lineHeight:1.65}}>{esc(b.anmerkung)}</div></>}
-              </div>
-            ))}
-          </> : null}
-          <button className="btn btn-danger btn-full" style={{marginTop:14}} onClick={()=>kollegeLoeschen(detailKollege.id)}>Kollege löschen</button>
-        </div>
-      )}
-
-      {currentView === 'filter' && (
-        <div className="content view">
-          <div className="stat-row">
-            <div className="stat-box" style={{borderColor:'rgba(52,199,89,0.3)'}}><div className="stat-val" style={{color:'var(--green)'}}>{data.ereignisse.filter(e=>e.typ==='positiv').length}</div><div className="stat-label">Positiv</div></div>
-            <div className="stat-box" style={{borderColor:'rgba(255,59,48,0.25)'}}><div className="stat-val" style={{color:'var(--red)'}}>{data.ereignisse.filter(e=>e.typ==='negativ').length}</div><div className="stat-label">Negativ</div></div>
-            <div className="stat-box"><div className="stat-val" style={{color:'var(--acc)'}}>{data.ereignisse.length}</div><div className="stat-label">Gesamt</div></div>
-          </div>
-          <div className="filter-tabs">
-            <button className={`filter-tab ${filterTyp==='alle'?'active':''}`} onClick={()=>setFilter('alle')}>Alle</button>
-            <button className={`filter-tab ${filterTyp==='positiv'?'active':''}`} onClick={()=>setFilter('positiv')}>✦ Positiv</button>
-            <button className={`filter-tab ${filterTyp==='negativ'?'active':''}`} onClick={()=>setFilter('negativ')}>◆ Negativ</button>
-          </div>
-          {filtered.map(e=>{
-            const k = data.kollegen.find(k=>k.id===e.kollegeId) || {};
-            return (
-              <div key={e.id} className={`card ${e.typ==='positiv'?'pos':'neg'}`}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <div style={{display:'flex',alignItems:'center',gap:8}}>
-                    <span style={{fontSize:18}}>{k.avatar||'👤'}</span>
-                    <span className={`tag ${e.typ==='positiv'?'pos':'neg'}`}>{e.typ}</span>
-                    <span style={{fontSize:13,fontWeight:600,color:'var(--acc)'}}>{k.name?esc(k.name):'?'}</span>
-                  </div>
-                  <span className="meta">{fmt(e.datum)}</span>
-                </div>
-                <div style={{fontSize:14,lineHeight:1.65}}>{esc(e.text)}</div>
-              </div>
-            );
-          })}
-          {filtered.length===0 && <div className="empty"><div className="empty-icon">⊞</div>Keine Ereignisse gefunden</div>}
-        </div>
-      )}
-
-      <nav className="nav">
-        <button className={`nav-btn ${currentView==='bewertung'?'active':''}`} onClick={()=>setCurrentView('bewertung')}>
-          <span className="nav-icon">⭐</span>Bewerten
-        </button>
-        <button className={`nav-btn ${currentView==='kollegen'?'active':''}`} onClick={()=>setCurrentView('kollegen')}>
-          <span className="nav-icon">👤</span>Kollegen
-        </button>
-        <button className={`nav-btn ${currentView==='filter'?'active':''}`} onClick={()=>setCurrentView('filter')}>
-          <span className="nav-icon">⊞</span>Abfrage
-        </button>
-      </nav>
-      <div className="toast" id="toast"></div>
+      <footer>Reisekosten gem. interner Pauschalenregelung · 30 Min. Puffer vor &amp; nach Termin</footer>
     </div>
   );
 }
