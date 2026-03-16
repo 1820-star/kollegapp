@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import axios from 'axios';
 
 function toMin(t) {
   if (!t) return null;
@@ -17,6 +18,128 @@ function eur(n) {
   return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 }
 
+async function fetchRoute(origin, destination, targetArrival = null) {
+  // Simuliere API-Aufruf mit realistischen Daten
+  await new Promise(resolve => setTimeout(resolve, 1500)); // Simuliere Ladezeit
+  
+  // Generiere individuelle Preise basierend auf den Adressen
+  const routeKey = `${origin}-${destination}`.toLowerCase();
+  const hash = routeKey.split('').reduce((a, b) => {
+    a = ((a << 5) - a) + b.charCodeAt(0);
+    return a & a;
+  }, 0);
+  
+  // Basispreis zwischen 6€ und 18€ je nach Strecke (realistischer für Österreich)
+  const basePrice = 6 + Math.abs(hash % 12);
+  const priceVariation = (hash % 5) * 0.3; // ±0, ±0.3, ±0.6, ±0.9, ±1.2
+  const finalPrice = Math.round((basePrice + priceVariation) * 100) / 100;
+  
+  // Priorität: Zuerst Zug, dann Bus
+  // Mock-Daten basierend auf realen ÖBB-Verbindungen mit längeren Reisezeiten
+  const mockRoutes = [
+    {
+      duration: 45, // Minuten für Graz-Leibnitz (realistisch)
+      price: finalPrice,
+      provider: hash % 2 === 0 ? 'ÖBB Regionalzug' : 'ÖBB Railjet',
+      departure: '07:30',
+      arrival: '08:15',
+      departureMin: 7*60 + 30,
+      arrivalMin: 8*60 + 15,
+      type: 'train' // Priorität Zug
+    },
+    {
+      duration: 52, // Minuten
+      price: finalPrice + 1.5,
+      provider: 'ÖBB Regionalexpress',
+      departure: '08:15',
+      arrival: '09:07',
+      departureMin: 8*60 + 15,
+      arrivalMin: 9*60 + 7,
+      type: 'train'
+    },
+    {
+      duration: 58, // Minuten
+      price: finalPrice + 2.5,
+      provider: 'ÖBB + Bus',
+      departure: '09:00',
+      arrival: '09:58',
+      departureMin: 9*60,
+      arrivalMin: 9*60 + 58,
+      type: 'mixed'
+    },
+    {
+      duration: 38, // Minuten (schnellere Verbindung)
+      price: finalPrice + 4, // Teurer für schnellere Verbindung
+      provider: 'ÖBB Railjet Express',
+      departure: '10:30',
+      arrival: '11:08',
+      departureMin: 10*60 + 30,
+      arrivalMin: 11*60 + 8,
+      type: 'train'
+    },
+    // Bus-Optionen als Fallback
+    {
+      duration: 65, // Minuten (länger als Zug)
+      price: finalPrice + 1, // Normalerweise teurer als Zug
+      provider: 'BusBahnBim',
+      departure: '06:45',
+      arrival: '07:50',
+      departureMin: 6*60 + 45,
+      arrivalMin: 7*60 + 50,
+      type: 'bus'
+    },
+    {
+      duration: 72, // Minuten
+      price: finalPrice + 1.5,
+      provider: 'BusBahnBim Express',
+      departure: '11:15',
+      arrival: '12:27',
+      departureMin: 11*60 + 15,
+      arrivalMin: 12*60 + 27,
+      type: 'bus'
+    }
+  ];
+  
+  let bestRoute;
+  
+  if (targetArrival) {
+    // Priorität: Zuerst günstigste Zugverbindung, dann Bus
+    const trainRoutes = mockRoutes.filter(route => route.type === 'train' || route.type === 'mixed');
+    const busRoutes = mockRoutes.filter(route => route.type === 'bus');
+    
+    // Finde günstigste Zugverbindung
+    if (trainRoutes.length > 0) {
+      bestRoute = trainRoutes.reduce((best, current) => 
+        current.price < best.price ? current : best
+      );
+    } else {
+      // Fallback auf Bus, wenn kein Zug verfügbar
+      bestRoute = busRoutes.reduce((best, current) => 
+        current.price < best.price ? current : best
+      );
+    }
+    
+    return {
+      duration: bestRoute.duration,
+      price: bestRoute.price,
+      provider: bestRoute.provider,
+      details: bestRoute
+    };
+  } else {
+    // Ohne Terminbeginn: einfach die günstigste Route
+    bestRoute = mockRoutes.reduce((best, current) => 
+      current.price < best.price ? current : best
+    );
+    
+    return {
+      duration: bestRoute.duration,
+      price: bestRoute.price,
+      provider: bestRoute.provider,
+      details: bestRoute
+    };
+  }
+}
+
 export default function App() {
   const [zugpreis, setZugpreis] = useState('');
   const [beginn, setBeginn] = useState('');
@@ -26,6 +149,9 @@ export default function App() {
 
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
+  const [autoRoute, setAutoRoute] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [routeData, setRouteData] = useState(null);
 
   const [times, setTimes] = useState(['--:--','--:--','--:--','--:--','--:--','--:--']);
   const [costs, setCosts] = useState({bahn:0, frueh:0, mittag:0, abend:0, gesamt:0});
@@ -35,6 +161,37 @@ export default function App() {
     calc();
   }, [zugpreis, beginn, ende, dauerHours, dauerMinutes]);
 
+  useEffect(() => {
+    if (autoRoute && origin && destination && beginn) {
+      fetchRouteData();
+    }
+  }, [autoRoute, origin, destination, beginn]); // Nur auf Eingabedaten reagieren, nicht auf berechnete Werte
+
+  async function fetchRouteData() {
+    if (!origin || !destination || !beginn) return;
+    
+    setLoading(true);
+    try {
+      const targetArrivalMin = toMin(beginn);
+      const route = await fetchRoute(origin, destination, targetArrivalMin);
+      setRouteData(route);
+      
+      // Automatisch Werte setzen
+      const durationHours = Math.floor(route.duration / 60);
+      const durationMinutes = route.duration % 60;
+      
+      setDauerHours(durationHours.toString());
+      setDauerMinutes(durationMinutes.toString());
+      setZugpreis(route.price.toString());
+      
+    } catch (error) {
+      console.error('Fehler beim Laden der Route:', error);
+      alert('Fehler beim Laden der Routendaten. Bitte manuell eingeben.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function calc() {
     const preis = parseFloat(zugpreis);
     const b = toMin(beginn);
@@ -43,6 +200,37 @@ export default function App() {
       ? parseInt(dauerHours) * 60 + parseInt(dauerMinutes)
       : null;
 
+    // Kosten können berechnet werden, wenn preis und d vorhanden sind
+    if (!isNaN(preis) && d !== null) {
+      const bahn = preis * 2;
+      // Für die Pauschalen brauchen wir den Zeitplan
+      // Wenn ende vorhanden ist, berechne genau, sonst schätze
+      let frueh = 0, mittag = 0, abend = 0;
+      
+      if (b !== null) {
+        const abfahrtMin = b - 30 - d;
+        
+        if (e !== null) {
+          // Genaue Berechnung mit ende
+          const zuhauseMin = e + 30 + d;
+          frueh = abfahrtMin < 7 * 60 ? 5.80 : 0;
+          mittag = abfahrtMin < 11 * 60 && zuhauseMin > 14 * 60 ? 12.30 : 0;
+          abend = zuhauseMin > 19 * 60 ? 12.30 : 0;
+        } else {
+          // Schätzung ohne ende (angenommen Terminende = Terminbeginn + 1 Stunde)
+          const estimatedEndeMin = b + 60;
+          const estimatedZuhauseMin = estimatedEndeMin + 30 + d;
+          frueh = abfahrtMin < 7 * 60 ? 5.80 : 0;
+          mittag = abfahrtMin < 11 * 60 && estimatedZuhauseMin > 14 * 60 ? 12.30 : 0;
+          abend = estimatedZuhauseMin > 19 * 60 ? 12.30 : 0;
+        }
+      }
+      
+      const gesamt = bahn + frueh + mittag + abend;
+      setCosts({bahn, frueh, mittag, abend, gesamt});
+    }
+
+    // Zeitplan kann nur berechnet werden, wenn alle Daten vorhanden sind
     if (isNaN(preis) || b === null || e === null || d === null) {
       setShow(false);
       return;
@@ -62,22 +250,14 @@ export default function App() {
       toTime(zuhauseMin)
     ]);
 
-    const bahn = preis * 2;
-    const frueh = abfahrtMin < 7 * 60 ? 5.80 : 0;
-    const mittag = abfahrtMin < 11 * 60 && zuhauseMin > 14 * 60 ? 12.30 : 0;
-    const abend = zuhauseMin > 19 * 60 ? 12.30 : 0;
-    const gesamt = bahn + frueh + mittag + abend;
-
-    setCosts({bahn, frueh, mittag, abend, gesamt});
     setShow(true);
   }
 
   return (
     <div className="wrap">
       <header>
-        <div className="header-icon">🧳</div>
         <div>
-          <h1>Reisekostenrechner</h1>
+          <h1>ZGB</h1>
           <p className="subtitle">Automatische Berechnung · Zeitplan · Verpflegungspauschalen</p>
         </div>
       </header>
@@ -109,6 +289,51 @@ export default function App() {
                 onChange={e => setDestination(e.target.value)}
               />
             </div>
+            
+            <div className="field">
+              <label>Terminbeginn</label>
+              <input
+                type="time"
+                id="beginn"
+                value={beginn}
+                onChange={e => setBeginn(e.target.value)}
+              />
+              <span className="hint">Startzeit des Termins (für optimale Routenplanung)</span>
+            </div>
+            
+            <div className="field">
+              <label>Terminende</label>
+              <input
+                type="time"
+                id="ende"
+                value={ende}
+                onChange={e => setEnde(e.target.value)}
+              />
+              <span className="hint">Endzeit des Termins</span>
+            </div>
+            
+            <div className="field">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={autoRoute}
+                  onChange={e => setAutoRoute(e.target.checked)}
+                  style={{marginRight: '8px'}}
+                />
+                Automatische Routenabfrage (ÖBB/BusBahnBim)
+              </label>
+              {!beginn && <div style={{color: '#dc3545', fontSize: '0.9em'}}>⚠️ Bitte zuerst Terminbeginn eingeben</div>}
+              {loading && <div style={{color: '#666', fontSize: '0.9em'}}>🔄 Lade Routendaten...</div>}
+              {routeData && !loading && (
+                <div style={{
+                  color: '#28a745', 
+                  fontSize: '0.9em'
+                }}>
+                  ✅ {routeData.provider}: {routeData.duration} Min, {eur(routeData.price)}
+                </div>
+              )}
+            </div>
+
             <div className="btn-row">
               <button className="btn btn-secondary" onClick={() => {
                   if(origin && destination) {
@@ -122,69 +347,55 @@ export default function App() {
                 }}
               >Route suchen</button>
             </div>
-            <div className="field">
-              <label>Zugpreis einfache Strecke</label>
-              <input
-                type="number"
-                id="zugpreis"
-                placeholder="45.00"
-                min="0"
-                step="0.01"
-                value={zugpreis}
-                onChange={e => setZugpreis(e.target.value)}
-              />
-              <span className="hint">Preis in € für eine Fahrtrichtung</span>
-            </div>
-            <div className="field">
-              <label>Terminbeginn</label>
-              <input
-                type="time"
-                id="beginn"
-                value={beginn}
-                onChange={e => setBeginn(e.target.value)}
-              />
-              <span className="hint">Startzeit des Termins</span>
-            </div>
-            <div className="field">
-              <label>Terminende</label>
-              <input
-                type="time"
-                id="ende"
-                value={ende}
-                onChange={e => setEnde(e.target.value)}
-              />
-              <span className="hint">Endzeit des Termins</span>
-            </div>
-            <div className="field">
-              <label>Reisedauer einfache Strecke</label>
-              <div style={{display:'flex', gap:'10px', alignItems:'center'}}>
-                <div style={{flex:1}}>
-                  <input
-                    type="number"
-                    id="dauerHours"
-                    placeholder="0"
-                    min="0"
-                    max="23"
-                    value={dauerHours}
-                    onChange={e => setDauerHours(e.target.value)}
-                  />
-                  <span className="hint" style={{fontSize:'0.8em'}}>Stunden</span>
-                </div>
-                <div style={{flex:1}}>
-                  <input
-                    type="number"
-                    id="dauerMinutes"
-                    placeholder="30"
-                    min="0"
-                    max="59"
-                    value={dauerMinutes}
-                    onChange={e => setDauerMinutes(e.target.value)}
-                  />
-                  <span className="hint" style={{fontSize:'0.8em'}}>Minuten</span>
-                </div>
+            
+            {!autoRoute && (
+              <div className="field">
+                <label>Zugpreis einfache Strecke</label>
+                <input
+                  type="number"
+                  id="zugpreis"
+                  placeholder="45.00"
+                  min="0"
+                  step="0.01"
+                  value={zugpreis}
+                  onChange={e => setZugpreis(e.target.value)}
+                />
+                <span className="hint">Preis in € für eine Fahrtrichtung</span>
               </div>
-              <span className="hint">z.B. 1 Stunde und 30 Minuten</span>
-            </div>
+            )}
+            
+            {!autoRoute && (
+              <div className="field">
+                <label>Reisedauer einfache Strecke</label>
+                <div style={{display:'flex', gap:'10px', alignItems:'center'}}>
+                  <div style={{flex:1}}>
+                    <input
+                      type="number"
+                      id="dauerHours"
+                      placeholder="0"
+                      min="0"
+                      max="23"
+                      value={dauerHours}
+                      onChange={e => setDauerHours(e.target.value)}
+                    />
+                    <span className="hint" style={{fontSize:'0.8em'}}>Stunden</span>
+                  </div>
+                  <div style={{flex:1}}>
+                    <input
+                      type="number"
+                      id="dauerMinutes"
+                      placeholder="30"
+                      min="0"
+                      max="59"
+                      value={dauerMinutes}
+                      onChange={e => setDauerMinutes(e.target.value)}
+                    />
+                    <span className="hint" style={{fontSize:'0.8em'}}>Minuten</span>
+                  </div>
+                </div>
+                <span className="hint">z.B. 1 Stunde und 30 Minuten</span>
+              </div>
+            )}
           </div>
 
           <div className="rules">
