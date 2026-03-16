@@ -1,10 +1,9 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// when deploying to GitHub Pages under repo kollegapp, set base to "/kollegapp/"
-// using relative paths "./" also works if you host root, but pages uses /repo/ path.
+// Use relative asset paths so the app works on Cloudflare root and subpaths.
 export default defineConfig({
-  base: '/kollegapp/',
+  base: './',
   plugins: [react()],
   build: {
     outDir: 'dist'
