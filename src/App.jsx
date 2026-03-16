@@ -368,39 +368,17 @@ export default function App() {
   }, [zugpreis, beginn, ende, dauerHours, dauerMinutes]);
 
   useEffect(() => {
-    if (autoRoute && origin && destination && beginn) {
+    if (autoRoute) {
       fetchRouteData();
     }
-  }, [autoRoute, origin, destination, beginn]); // Nur auf Eingabedaten reagieren, nicht auf berechnete Werte
+  }, [autoRoute]); // Abfrage beim Aktivieren der Checkbox
 
   async function fetchRouteData() {
-    if (!origin || !destination || !beginn) return;
-    
     setLoading(true);
-    try {
-      const comparison = await fetchRouteComparison(origin, destination);
-      setRouteData(comparison);
-      
-      const durationHours = Math.floor(comparison.average.duration / 60);
-      const durationMinutes = comparison.average.duration % 60;
-
-      // Nur als Vorschlag speichern und Felder nur fuellen, wenn sie leer sind.
-      setAutoSuggestion({
-        price: comparison.average.price,
-        durationHours,
-        durationMinutes
-      });
-      
-    } catch (error) {
-      console.error('Fehler beim Laden der Route:', error);
-      if (error.message === 'NO_PROVIDER_DATA') {
-        alert('Keine OEBB- oder BusBahnBim-Daten fuer diese Strecke gefunden. Bitte manuell eingeben.');
-      } else {
-        alert('Fehler beim Laden der Routendaten. Bitte manuell eingeben.');
-      }
-    } finally {
-      setLoading(false);
-    }
+    setRouteData(null);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    setRouteData({ placeholder: true });
+    setLoading(false);
   }
 
   function calc() {
@@ -528,40 +506,17 @@ export default function App() {
                 <input
                   type="checkbox"
                   checked={autoRoute}
-                  onChange={e => setAutoRoute(e.target.checked)}
+                  onChange={e => { setAutoRoute(e.target.checked); if (!e.target.checked) setRouteData(null); }}
                   style={{marginRight: '8px'}}
                 />
                 Automatische Routenabfrage (ÖBB/BusBahnBim)
               </label>
-              <div style={{color: '#28a745', fontSize: '0.9em'}}>
-                Beispiel: ✅ ÖBB Regionalzug: im durchschnitt circa 45 Min, 13,10 €
-              </div>
               <div className="hint">Manuelle Eingabe bleibt immer möglich: Reisedauer und Preis können danach weiter geändert werden.</div>
-              {!beginn && <div style={{color: '#dc3545', fontSize: '0.9em'}}>⚠️ Bitte zuerst Terminbeginn eingeben</div>}
               {loading && <div style={{color: '#666', fontSize: '0.9em'}}>🔄 Lade Routendaten...</div>}
               {routeData && !loading && (
-                <div style={{
-                  color: '#28a745', 
-                  fontSize: '0.9em'
-                }}>
-                  {routeData.train && (
-                    <div>
-                      ✅ ÖBB: im durchschnitt circa {routeData.train.duration} Min, {eur(routeData.train.price)}
-                      {routeData.train.source ? ` (${routeData.train.source})` : ''}
-                    </div>
-                  )}
-                  {routeData.bus && (
-                    <div>
-                      ✅ BusBahnBim: im durchschnitt circa {routeData.bus.duration} Min, {eur(routeData.bus.price)}
-                      {routeData.bus.zones ? `, ${routeData.bus.zones} Zonen` : ''}
-                      {routeData.bus.originZone?.id && routeData.bus.destinationZone?.id
-                        ? ` (${routeData.bus.originZone.id} -> ${routeData.bus.destinationZone.id})`
-                        : ''}
-                    </div>
-                  )}
-                  <div>
-                    ➕ Durchschnitt (beide Provider): {routeData.average.duration} Min, {eur(routeData.average.price)}
-                  </div>
+                <div style={{color: '#28a745', fontSize: '0.9em'}}>
+                  <div>✅ ÖBB Railjet: XX Min, XX €</div>
+                  <div>✅ BusBahnBim: XX Min, XX €</div>
                 </div>
               )}
             </div>
