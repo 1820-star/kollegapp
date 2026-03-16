@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
 
 function toMin(t) {
   if (!t) return null;
@@ -18,127 +17,333 @@ function eur(n) {
   return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 }
 
-async function fetchRoute(origin, destination, targetArrival = null) {
-  // Simuliere API-Aufruf mit realistischen Daten
-  await new Promise(resolve => setTimeout(resolve, 1500)); // Simuliere Ladezeit
-  
-  // Generiere individuelle Preise basierend auf den Adressen
-  const routeKey = `${origin}-${destination}`.toLowerCase();
-  const hash = routeKey.split('').reduce((a, b) => {
-    a = ((a << 5) - a) + b.charCodeAt(0);
-    return a & a;
-  }, 0);
-  
-  // Basispreis zwischen 6€ und 18€ je nach Strecke (realistischer für Österreich)
-  const basePrice = 6 + Math.abs(hash % 12);
-  const priceVariation = (hash % 5) * 0.3; // ±0, ±0.3, ±0.6, ±0.9, ±1.2
-  const finalPrice = Math.round((basePrice + priceVariation) * 100) / 100;
-  
-  // Priorität: Zuerst Zug, dann Bus
-  // Mock-Daten basierend auf realen ÖBB-Verbindungen mit längeren Reisezeiten
-  const mockRoutes = [
-    {
-      duration: 45, // Minuten für Graz-Leibnitz (realistisch)
-      price: finalPrice,
-      provider: hash % 2 === 0 ? 'ÖBB Regionalzug' : 'ÖBB Railjet',
-      departure: '07:30',
-      arrival: '08:15',
-      departureMin: 7*60 + 30,
-      arrivalMin: 8*60 + 15,
-      type: 'train' // Priorität Zug
-    },
-    {
-      duration: 52, // Minuten
-      price: finalPrice + 1.5,
-      provider: 'ÖBB Regionalexpress',
-      departure: '08:15',
-      arrival: '09:07',
-      departureMin: 8*60 + 15,
-      arrivalMin: 9*60 + 7,
-      type: 'train'
-    },
-    {
-      duration: 58, // Minuten
-      price: finalPrice + 2.5,
-      provider: 'ÖBB + Bus',
-      departure: '09:00',
-      arrival: '09:58',
-      departureMin: 9*60,
-      arrivalMin: 9*60 + 58,
-      type: 'mixed'
-    },
-    {
-      duration: 38, // Minuten (schnellere Verbindung)
-      price: finalPrice + 4, // Teurer für schnellere Verbindung
-      provider: 'ÖBB Railjet Express',
-      departure: '10:30',
-      arrival: '11:08',
-      departureMin: 10*60 + 30,
-      arrivalMin: 11*60 + 8,
-      type: 'train'
-    },
-    // Bus-Optionen als Fallback
-    {
-      duration: 65, // Minuten (länger als Zug)
-      price: finalPrice + 1, // Normalerweise teurer als Zug
-      provider: 'BusBahnBim',
-      departure: '06:45',
-      arrival: '07:50',
-      departureMin: 6*60 + 45,
-      arrivalMin: 7*60 + 50,
-      type: 'bus'
-    },
-    {
-      duration: 72, // Minuten
-      price: finalPrice + 1.5,
-      provider: 'BusBahnBim Express',
-      departure: '11:15',
-      arrival: '12:27',
-      departureMin: 11*60 + 15,
-      arrivalMin: 12*60 + 27,
-      type: 'bus'
+function normalizePlace(text) {
+  return (text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function routeKey(origin, destination) {
+  return `${normalizePlace(origin)}|${normalizePlace(destination)}`;
+}
+
+// Tarifdaten (Erwachsenen Vollpreis, einfache Strecke).
+// Nur Daten verwenden, die von euch bestätigt sind.
+const ROUTE_TARIFFS = {
+  'graz|leibnitz': [
+    { type: 'train', provider: 'ÖBB', price: 11.3, duration: 180, zones: 0 }
+  ],
+  'leibnitz|graz': [
+    { type: 'train', provider: 'ÖBB', price: 11.3, duration: 180, zones: 0 }
+  ]
+};
+
+const BUS_ZONE_TARIFFS = {
+  1: { validityMin: 60, price: 3.2 },
+  2: { validityMin: 90, price: 6.1 },
+  3: { validityMin: 90, price: 8.8 },
+  4: { validityMin: 90, price: 11.3 },
+  5: { validityMin: 120, price: 13.8 },
+  6: { validityMin: 120, price: 16.3 },
+  7: { validityMin: 120, price: 18.7 },
+  8: { validityMin: 150, price: 21.2 },
+  9: { validityMin: 150, price: 23.6 },
+  10: { validityMin: 150, price: 26.0 },
+  11: { validityMin: 180, price: 28.2 },
+  12: { validityMin: 180, price: 30.5 },
+  13: { validityMin: 180, price: 32.8 },
+  14: { validityMin: 210, price: 34.6 },
+  15: { validityMin: 210, price: 36.5 },
+  16: { validityMin: 360, price: 38.1 }
+};
+
+const TRANSPORT_ZONES = {
+  '101': 'Graz (Kernzone)',
+  '102': 'Graz Umgebung Nord',
+  '103': 'Graz Umgebung Ost',
+  '104': 'Graz Umgebung Sued',
+  '105': 'Graz Umgebung West',
+  '201': 'Bruck an der Mur',
+  '202': 'Kapfenberg',
+  '203': 'Muerzzuschlag',
+  '204': 'Kindberg',
+  '301': 'Frohnleiten',
+  '302': 'Deutschfeistritz',
+  '303': 'Peggau',
+  '304': 'Uebelbach',
+  '401': 'Weiz',
+  '402': 'Gleisdorf',
+  '403': 'Pischelsdorf',
+  '404': 'Birkfeld',
+  '501': 'Hartberg',
+  '502': 'Fuerstenfeld',
+  '503': 'Bad Waltersdorf',
+  '504': 'Friedberg',
+  '601': 'Leibnitz',
+  '602': 'Wildon',
+  '603': 'Ehrenhausen',
+  '604': 'Strass-Spielfeld',
+  '701': 'Deutschlandsberg',
+  '702': 'Stainz',
+  '703': 'Eibiswald',
+  '801': 'Voitsberg',
+  '802': 'Koeflach',
+  '803': 'Baernbach',
+  '901': 'Leoben',
+  '902': 'Trofaiach',
+  '903': 'Eisenerz'
+};
+
+// Hier kommen spaeter von dir bestaetigte Strecken-Zonenanzahlen rein.
+// Format: 'zoneA|zoneB': zonenCount
+const ROUTE_ZONE_COUNTS = {
+  '101|601': 4,
+  '101|901': 3,
+  '601|701': 3,
+  '101|401': 3,
+  '101|801': 3,
+  '101|501': 4,
+  '401|501': 3,
+  '701|801': 3,
+  '901|201': 2,
+  '201|202': 2,
+  '401|402': 2,
+  '801|802': 2,
+  '601|901': 7,
+  '701|501': 7,
+  '801|601': 6,
+  '401|901': 6,
+  '501|701': 6
+};
+
+function findZoneByAddress(address) {
+  const normalizedAddress = normalizePlace(address);
+  const entries = Object.entries(TRANSPORT_ZONES);
+
+  for (const [zoneId, zoneName] of entries) {
+    const normalizedZoneName = normalizePlace(zoneName);
+    if (normalizedAddress.includes(normalizedZoneName) || normalizedZoneName.includes(normalizedAddress)) {
+      return { id: zoneId, name: zoneName };
     }
-  ];
-  
-  let bestRoute;
-  
-  if (targetArrival) {
-    // Priorität: Zuerst günstigste Zugverbindung, dann Bus
-    const trainRoutes = mockRoutes.filter(route => route.type === 'train' || route.type === 'mixed');
-    const busRoutes = mockRoutes.filter(route => route.type === 'bus');
-    
-    // Finde günstigste Zugverbindung
-    if (trainRoutes.length > 0) {
-      bestRoute = trainRoutes.reduce((best, current) => 
-        current.price < best.price ? current : best
+  }
+
+  return null;
+}
+
+function getZoneCount(originZoneId, destinationZoneId) {
+  if (originZoneId === destinationZoneId) return 1;
+
+  const directKey = `${originZoneId}|${destinationZoneId}`;
+  const reverseKey = `${destinationZoneId}|${originZoneId}`;
+
+  return ROUTE_ZONE_COUNTS[directKey] || ROUTE_ZONE_COUNTS[reverseKey] || null;
+}
+
+let googleMapsLoaderPromise = null;
+
+function loadGoogleMaps(apiKey) {
+  if (typeof window === 'undefined') return Promise.resolve(null);
+  if (window.google?.maps?.DirectionsService) return Promise.resolve(window.google);
+
+  if (!googleMapsLoaderPromise) {
+    googleMapsLoaderPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => resolve(window.google);
+      script.onerror = () => reject(new Error('GOOGLE_MAPS_LOAD_FAILED'));
+      document.head.appendChild(script);
+    });
+  }
+
+  return googleMapsLoaderPromise;
+}
+
+async function fetchGoogleTransitAverageDuration(origin, destination) {
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    await loadGoogleMaps(apiKey);
+
+    return await new Promise(resolve => {
+      const directionsService = new window.google.maps.DirectionsService();
+      directionsService.route(
+        {
+          origin,
+          destination,
+          travelMode: window.google.maps.TravelMode.TRANSIT,
+          provideRouteAlternatives: true
+        },
+        (result, status) => {
+          if (status !== 'OK' || !result?.routes?.length) {
+            resolve(null);
+            return;
+          }
+
+          const durations = result.routes
+            .map(route => route?.legs?.[0]?.duration?.value)
+            .filter(Boolean)
+            .map(seconds => Math.round(seconds / 60));
+
+          if (!durations.length) {
+            resolve(null);
+            return;
+          }
+
+          const avg = Math.round(durations.reduce((sum, n) => sum + n, 0) / durations.length);
+          resolve(avg);
+        }
       );
-    } else {
-      // Fallback auf Bus, wenn kein Zug verfügbar
-      bestRoute = busRoutes.reduce((best, current) => 
-        current.price < best.price ? current : best
-      );
-    }
-    
-    return {
-      duration: bestRoute.duration,
-      price: bestRoute.price,
-      provider: bestRoute.provider,
-      details: bestRoute
-    };
-  } else {
-    // Ohne Terminbeginn: einfach die günstigste Route
-    bestRoute = mockRoutes.reduce((best, current) => 
-      current.price < best.price ? current : best
-    );
-    
-    return {
-      duration: bestRoute.duration,
-      price: bestRoute.price,
-      provider: bestRoute.provider,
-      details: bestRoute
-    };
+    });
+  } catch {
+    return null;
   }
 }
+
+function getTrainEstimate(origin, destination) {
+  const key = routeKey(origin, destination);
+  const options = (ROUTE_TARIFFS[key] || []).filter(item => item.type === 'train');
+  if (!options.length) return null;
+
+  const avgPrice = options.reduce((sum, item) => sum + item.price, 0) / options.length;
+  const avgDuration = Math.round(options.reduce((sum, item) => sum + item.duration, 0) / options.length);
+
+  return {
+    provider: 'ÖBB',
+    price: avgPrice,
+    duration: avgDuration,
+    source: 'tarifdaten'
+  };
+}
+
+function getBusEstimate(origin, destination) {
+  const originZone = findZoneByAddress(origin);
+  const destinationZone = findZoneByAddress(destination);
+
+  if (!originZone || !destinationZone) {
+    return null;
+  }
+
+  const zoneCount = getZoneCount(originZone.id, destinationZone.id);
+  if (!zoneCount) {
+    return null;
+  }
+
+  const tariff = BUS_ZONE_TARIFFS[zoneCount];
+  if (!tariff) {
+    return null;
+  }
+
+  return {
+    provider: 'BusBahnBim',
+    price: tariff.price,
+    duration: tariff.validityMin,
+    zones: zoneCount,
+    originZone,
+    destinationZone,
+    source: 'zonentarif'
+  };
+}
+
+async function fetchRouteComparison(origin, destination) {
+  const train = getTrainEstimate(origin, destination);
+  const bus = getBusEstimate(origin, destination);
+
+  let trainMerged = train;
+  if (trainMerged) {
+    const googleAvgDuration = await fetchGoogleTransitAverageDuration(origin, destination);
+    if (googleAvgDuration) {
+      trainMerged = {
+        ...trainMerged,
+        duration: Math.round((trainMerged.duration + googleAvgDuration) / 2),
+        source: 'durchschnitt aus tarifdaten + google maps'
+      };
+    }
+  }
+
+  const providers = [trainMerged, bus].filter(Boolean);
+  if (!providers.length) {
+    throw new Error('NO_PROVIDER_DATA');
+  }
+
+  const avgPrice = providers.reduce((sum, item) => sum + item.price, 0) / providers.length;
+  const avgDuration = Math.round(providers.reduce((sum, item) => sum + item.duration, 0) / providers.length);
+
+  return {
+    train: trainMerged,
+    bus,
+    average: {
+      price: avgPrice,
+      duration: avgDuration
+    }
+  };
+}
+
+async function fetchRoute(origin, destination, targetArrival = null) {
+  // Kleine Verzögerung für UI-Feedback
+  await new Promise(resolve => setTimeout(resolve, 1500)); // Simuliere Ladezeit
+
+  const key = routeKey(origin, destination);
+  const options = ROUTE_TARIFFS[key] || [];
+
+  if (options.length > 0) {
+    const trainOptions = options.filter(item => item.type === 'train');
+    const busOptions = options.filter(item => item.type === 'bus');
+
+    const pool = trainOptions.length > 0 ? trainOptions : busOptions;
+    if (pool.length === 0) {
+      throw new Error('NO_TRANSPORT_OPTION');
+    }
+
+    const bestRoute = pool.reduce((best, current) =>
+      current.price < best.price ? current : best
+    );
+
+    return {
+      duration: bestRoute.duration,
+      price: bestRoute.price,
+      provider: bestRoute.provider,
+      details: bestRoute,
+      requestedArrival: targetArrival
+    };
+  }
+
+  // Fallback: BusBahnBim Tariflogik aus fixer Zonentariftabelle
+  const originZone = findZoneByAddress(origin);
+  const destinationZone = findZoneByAddress(destination);
+
+  if (!originZone || !destinationZone) {
+    throw new Error('NO_ZONE_MATCH');
+  }
+
+  const zoneCount = getZoneCount(originZone.id, destinationZone.id);
+  if (!zoneCount) {
+    throw new Error(`NO_ZONE_COUNT:${originZone.id}|${destinationZone.id}`);
+  }
+
+  const tariff = BUS_ZONE_TARIFFS[zoneCount];
+  if (!tariff) {
+    throw new Error('NO_ZONE_TARIFF');
+  }
+
+  return {
+    duration: tariff.validityMin,
+    price: tariff.price,
+    provider: 'BusBahnBim',
+    details: {
+      type: 'bus',
+      zones: zoneCount,
+      originZone,
+      destinationZone
+    },
+    requestedArrival: targetArrival
+  };
+}
+
 
 export default function App() {
   const [zugpreis, setZugpreis] = useState('');
@@ -152,6 +357,7 @@ export default function App() {
   const [autoRoute, setAutoRoute] = useState(false);
   const [loading, setLoading] = useState(false);
   const [routeData, setRouteData] = useState(null);
+  const [autoSuggestion, setAutoSuggestion] = useState(null);
 
   const [times, setTimes] = useState(['--:--','--:--','--:--','--:--','--:--','--:--']);
   const [costs, setCosts] = useState({bahn:0, frueh:0, mittag:0, abend:0, gesamt:0});
@@ -172,21 +378,26 @@ export default function App() {
     
     setLoading(true);
     try {
-      const targetArrivalMin = toMin(beginn);
-      const route = await fetchRoute(origin, destination, targetArrivalMin);
-      setRouteData(route);
+      const comparison = await fetchRouteComparison(origin, destination);
+      setRouteData(comparison);
       
-      // Automatisch Werte setzen
-      const durationHours = Math.floor(route.duration / 60);
-      const durationMinutes = route.duration % 60;
-      
-      setDauerHours(durationHours.toString());
-      setDauerMinutes(durationMinutes.toString());
-      setZugpreis(route.price.toString());
+      const durationHours = Math.floor(comparison.average.duration / 60);
+      const durationMinutes = comparison.average.duration % 60;
+
+      // Nur als Vorschlag speichern und Felder nur fuellen, wenn sie leer sind.
+      setAutoSuggestion({
+        price: comparison.average.price,
+        durationHours,
+        durationMinutes
+      });
       
     } catch (error) {
       console.error('Fehler beim Laden der Route:', error);
-      alert('Fehler beim Laden der Routendaten. Bitte manuell eingeben.');
+      if (error.message === 'NO_PROVIDER_DATA') {
+        alert('Keine OEBB- oder BusBahnBim-Daten fuer diese Strecke gefunden. Bitte manuell eingeben.');
+      } else {
+        alert('Fehler beim Laden der Routendaten. Bitte manuell eingeben.');
+      }
     } finally {
       setLoading(false);
     }
@@ -322,6 +533,10 @@ export default function App() {
                 />
                 Automatische Routenabfrage (ÖBB/BusBahnBim)
               </label>
+              <div style={{color: '#28a745', fontSize: '0.9em'}}>
+                Beispiel: ✅ ÖBB Regionalzug: im durchschnitt circa 45 Min, 13,10 €
+              </div>
+              <div className="hint">Manuelle Eingabe bleibt immer möglich: Reisedauer und Preis können danach weiter geändert werden.</div>
               {!beginn && <div style={{color: '#dc3545', fontSize: '0.9em'}}>⚠️ Bitte zuerst Terminbeginn eingeben</div>}
               {loading && <div style={{color: '#666', fontSize: '0.9em'}}>🔄 Lade Routendaten...</div>}
               {routeData && !loading && (
@@ -329,7 +544,24 @@ export default function App() {
                   color: '#28a745', 
                   fontSize: '0.9em'
                 }}>
-                  ✅ {routeData.provider}: {routeData.duration} Min, {eur(routeData.price)}
+                  {routeData.train && (
+                    <div>
+                      ✅ ÖBB: im durchschnitt circa {routeData.train.duration} Min, {eur(routeData.train.price)}
+                      {routeData.train.source ? ` (${routeData.train.source})` : ''}
+                    </div>
+                  )}
+                  {routeData.bus && (
+                    <div>
+                      ✅ BusBahnBim: im durchschnitt circa {routeData.bus.duration} Min, {eur(routeData.bus.price)}
+                      {routeData.bus.zones ? `, ${routeData.bus.zones} Zonen` : ''}
+                      {routeData.bus.originZone?.id && routeData.bus.destinationZone?.id
+                        ? ` (${routeData.bus.originZone.id} -> ${routeData.bus.destinationZone.id})`
+                        : ''}
+                    </div>
+                  )}
+                  <div>
+                    ➕ Durchschnitt (beide Provider): {routeData.average.duration} Min, {eur(routeData.average.price)}
+                  </div>
                 </div>
               )}
             </div>
@@ -348,54 +580,58 @@ export default function App() {
               >Route suchen</button>
             </div>
             
-            {!autoRoute && (
-              <div className="field">
-                <label>Zugpreis einfache Strecke</label>
-                <input
-                  type="number"
-                  id="zugpreis"
-                  placeholder="45.00"
-                  min="0"
-                  step="0.01"
-                  value={zugpreis}
-                  onChange={e => setZugpreis(e.target.value)}
-                />
-                <span className="hint">Preis in € für eine Fahrtrichtung</span>
-              </div>
-            )}
-            
-            {!autoRoute && (
-              <div className="field">
-                <label>Reisedauer einfache Strecke</label>
-                <div style={{display:'flex', gap:'10px', alignItems:'center'}}>
-                  <div style={{flex:1}}>
-                    <input
-                      type="number"
-                      id="dauerHours"
-                      placeholder="0"
-                      min="0"
-                      max="23"
-                      value={dauerHours}
-                      onChange={e => setDauerHours(e.target.value)}
-                    />
-                    <span className="hint" style={{fontSize:'0.8em'}}>Stunden</span>
-                  </div>
-                  <div style={{flex:1}}>
-                    <input
-                      type="number"
-                      id="dauerMinutes"
-                      placeholder="30"
-                      min="0"
-                      max="59"
-                      value={dauerMinutes}
-                      onChange={e => setDauerMinutes(e.target.value)}
-                    />
-                    <span className="hint" style={{fontSize:'0.8em'}}>Minuten</span>
-                  </div>
+            <div className="field">
+              <label>Zugpreis einfache Strecke</label>
+              <input
+                type="number"
+                id="zugpreis"
+                placeholder="45.00"
+                min="0"
+                step="0.01"
+                value={zugpreis}
+                onChange={e => setZugpreis(e.target.value)}
+              />
+              <span className="hint">Preis in € für eine Fahrtrichtung</span>
+              {autoSuggestion && (
+                <span className="hint">Vorschlag (nicht uebernommen): ca. {eur(autoSuggestion.price)}</span>
+              )}
+            </div>
+
+            <div className="field">
+              <label>Reisedauer einfache Strecke</label>
+              <div style={{display:'flex', gap:'10px', alignItems:'center'}}>
+                <div style={{flex:1}}>
+                  <input
+                    type="number"
+                    id="dauerHours"
+                    placeholder="0"
+                    min="0"
+                    max="23"
+                    value={dauerHours}
+                    onChange={e => setDauerHours(e.target.value)}
+                  />
+                  <span className="hint" style={{fontSize:'0.8em'}}>Stunden</span>
                 </div>
-                <span className="hint">z.B. 1 Stunde und 30 Minuten</span>
+                <div style={{flex:1}}>
+                  <input
+                    type="number"
+                    id="dauerMinutes"
+                    placeholder="30"
+                    min="0"
+                    max="59"
+                    value={dauerMinutes}
+                    onChange={e => setDauerMinutes(e.target.value)}
+                  />
+                  <span className="hint" style={{fontSize:'0.8em'}}>Minuten</span>
+                </div>
               </div>
-            )}
+              <span className="hint">z.B. 1 Stunde und 30 Minuten</span>
+              {autoSuggestion && (
+                <span className="hint">
+                  Vorschlag (nicht uebernommen): ca. {autoSuggestion.durationHours}h {String(autoSuggestion.durationMinutes).padStart(2, '0')}min
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="rules">
